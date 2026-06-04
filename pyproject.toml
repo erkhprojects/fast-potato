@@ -30,7 +30,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "ingestor/tests", "digester/tests"]
+testpaths = ["tests", "core/tests", "ingestor/tests", "digester/tests"]
 
 [dependency-groups]
 dev = [

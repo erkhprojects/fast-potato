@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Coroutine
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from pydantic import BaseModel
 
+from core.depends import Depends
 from ingestor.message import TaskMessage
 
 
@@ -20,10 +22,31 @@ def _serialize_arg(value: Any) -> Any:
     return value
 
 
+def _split_params(fn: Callable) -> tuple[set[str], set[str]]:
+    """
+    Inspect fn's signature and return (sendable_params, dependency_params).
+
+    sendable_params  — regular params the caller must/can pass via send()
+    dependency_params — params declared with Depends(), resolved at execution time
+    """
+    sig = inspect.signature(fn)
+    sendable: set[str] = set()
+    deps: set[str] = set()
+
+    for name, param in sig.parameters.items():
+        if isinstance(param.default, Depends):
+            deps.add(name)
+        else:
+            sendable.add(name)
+
+    return sendable, deps
+
+
 class Task:
     def __init__(self, fn: Callable[..., Coroutine[Any, Any, Any]], name: str) -> None:
         self._fn = fn
         self.name = name
+        self._sendable_params, self.dependency_params = _split_params(fn)
 
     async def send(
         self,
@@ -34,6 +57,13 @@ class Task:
     ) -> TaskMessage:
         if delay is not None and eta is not None:
             raise ValueError("Provide either 'delay' or 'eta', not both.")
+
+        dep_params_passed = self.dependency_params & kwargs.keys()
+        if dep_params_passed:
+            raise TypeError(
+                f"Dependency-injected params must not be passed to send(): {dep_params_passed}. "
+                "They are resolved automatically by the worker."
+            )
 
         resolved_eta: datetime | None = eta
         if delay is not None:

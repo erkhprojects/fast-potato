@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
+from core.depends import Depends
 from ingestor import FastPotato, TaskMessage
 
 
@@ -98,3 +99,32 @@ class TestTaskDirectCall:
     async def test_task_can_be_called_directly(self):
         result = await add(5, 6)
         assert result == 11
+
+
+# --- Dependency injection on Task ---
+
+async def get_config() -> dict:
+    return {"env": "test"}
+
+
+@app.task
+async def task_with_dep(order_id: int, config: dict = Depends(get_config)) -> str:
+    return f"{order_id}:{config['env']}"
+
+
+class TestTaskDependencyParams:
+    def test_dep_params_detected(self):
+        assert "config" in task_with_dep.dependency_params
+
+    def test_sendable_params_exclude_deps(self):
+        assert "config" not in task_with_dep._sendable_params
+        assert "order_id" in task_with_dep._sendable_params
+
+    async def test_send_excludes_dep_from_message(self):
+        msg = await task_with_dep.send(order_id=99)
+        assert "config" not in msg.kwargs
+        assert msg.kwargs.get("order_id") == 99 or msg.args == [99] or msg.kwargs == {"order_id": 99}
+
+    async def test_send_raises_if_dep_param_passed(self):
+        with pytest.raises(TypeError, match="resolved automatically"):
+            await task_with_dep.send(order_id=1, config={"env": "bad"})
