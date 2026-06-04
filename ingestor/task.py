@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from core.depends import Depends
+from core.depends import _BaseDependency
 from ingestor.message import TaskMessage
 
 
@@ -34,7 +34,7 @@ def _split_params(fn: Callable) -> tuple[set[str], set[str]]:
     deps: set[str] = set()
 
     for name, param in sig.parameters.items():
-        if isinstance(param.default, Depends):
+        if isinstance(param.default, _BaseDependency):
             deps.add(name)
         else:
             sendable.add(name)

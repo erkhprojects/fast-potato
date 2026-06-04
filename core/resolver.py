@@ -4,45 +4,60 @@ import inspect
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from core.depends import Depends
+from core.depends import Depends, PotatoDepends
 
 
 class DependencyResolver:
     """
-    Resolves Depends() parameters for a callable, recursively.
+    Resolves Depends() and Depends[Potato] parameters for a callable, recursively.
 
     - Same dependency callable resolved once per resolver instance (per task execution).
     - Async generators are driven to their yield, then torn down on exit.
+    - Depends[PotatoSubclass] resolves to the app-level potato singleton.
     - Use as an async context manager to guarantee teardown.
 
     Example:
-        async with DependencyResolver() as resolver:
+        async with DependencyResolver(potato=app.potato) as resolver:
             injected = await resolver.resolve(my_task_fn)
             await my_task_fn(**real_args, **injected)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, potato: Any = None) -> None:
+        self._potato = potato
         self._cache: dict[Callable, Any] = {}
         self._generators: list[AsyncGenerator] = []
 
     async def resolve(self, fn: Callable) -> dict[str, Any]:
-        """Return a dict of {param_name: resolved_value} for every Depends() param of fn."""
+        """Return {param_name: resolved_value} for every dependency param of fn."""
         sig = inspect.signature(fn)
         injected: dict[str, Any] = {}
 
         for name, param in sig.parameters.items():
-            if isinstance(param.default, Depends):
+            if isinstance(param.default, PotatoDepends):
+                injected[name] = self._resolve_potato(param.default)
+            elif isinstance(param.default, Depends):
                 injected[name] = await self._resolve_one(param.default.dependency)
 
         return injected
+
+    def _resolve_potato(self, dep: PotatoDepends) -> Any:
+        if self._potato is None:
+            raise RuntimeError(
+                f"Task depends on {dep!r} but no potato was passed to FastPotato(). "
+                "Initialize the app with FastPotato('name', potato=YourConfig(...))."
+            )
+        if not isinstance(self._potato, dep.potato_type):
+            raise TypeError(
+                f"App potato is {type(self._potato).__name__!r}, "
+                f"but task expected {dep.potato_type.__name__!r}."
+            )
+        return self._potato
 
     async def _resolve_one(self, dep: Callable) -> Any:
         if dep in self._cache:
             return self._cache[dep]
 
-        # recursively resolve this dependency's own Depends() params first
         sub_kwargs = await self.resolve(dep)
-
         raw = dep(**sub_kwargs)
 
         if inspect.isasyncgen(raw):
@@ -57,7 +72,6 @@ class DependencyResolver:
         return value
 
     async def _teardown(self) -> None:
-        # tear down in reverse order (innermost dependency first)
         for gen in reversed(self._generators):
             try:
                 await gen.__anext__()
