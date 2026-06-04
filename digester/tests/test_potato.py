@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from core.depends import Depends, PotatoDepends
-from core.potato import Potato
-from core.resolver import DependencyResolver
+from digester.depends import Depends, PotatoDepends
+from digester.potato import Potato
+from digester.resolver import DependencyResolver
 
 
 # --- Sample Potato subclasses ---

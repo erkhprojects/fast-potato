@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
-from core.depends import Depends
+from digester.depends import Depends
 from ingestor import FastPotato, TaskMessage
 
 

@@ -3,12 +3,11 @@ from __future__ import annotations
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from core.potato import Potato
 from core.protocols import TaskProtocol
 
 
 class FastPotato:
-    def __init__(self, name: str, potato: Potato | None = None) -> None:
+    def __init__(self, name: str, potato: Any = None) -> None:
         self.name = name
         self.potato = potato
         self._registry: dict[str, TaskProtocol] = {}

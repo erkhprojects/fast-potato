@@ -4,7 +4,7 @@ import inspect
 from collections.abc import AsyncGenerator, Callable
 from typing import Any
 
-from core.depends import Depends, PotatoDepends
+from digester.depends import Depends, PotatoDepends
 
 
 class DependencyResolver:

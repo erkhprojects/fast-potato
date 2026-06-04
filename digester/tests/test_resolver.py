@@ -4,8 +4,8 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
-from core.depends import Depends
-from core.resolver import DependencyResolver
+from digester.depends import Depends
+from digester.resolver import DependencyResolver
 
 
 # --- Simple fixtures (functions) ---

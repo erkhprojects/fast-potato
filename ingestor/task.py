@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from core.depends import _BaseDependency
+from digester.depends import _BaseDependency
 from ingestor.message import TaskMessage
 
 
