@@ -10,7 +10,7 @@ except ImportError as exc:
     ) from exc
 
 from brokers.base import AbstractBroker
-from ingestor.message import TaskMessage
+from core.message import TaskMessage
 
 
 class RabbitMQBroker(AbstractBroker):

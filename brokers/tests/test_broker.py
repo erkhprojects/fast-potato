@@ -4,8 +4,8 @@ import pytest
 
 from brokers.base import AbstractBroker
 from brokers.memory import MemoryBroker
-from ingestor import FastPotato
-from ingestor.message import TaskMessage
+from core import FastPotato
+from core.message import TaskMessage
 
 
 # --- AbstractBroker contract ---

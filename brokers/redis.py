@@ -12,7 +12,7 @@ except ImportError as exc:
     ) from exc
 
 from brokers.base import AbstractBroker
-from ingestor.message import TaskMessage
+from core.message import TaskMessage
 
 # Redis key used for the delayed-task sorted set (score = unix timestamp)
 _DELAYED_KEY = "fast_potato:delayed"

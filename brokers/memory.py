@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 
 from brokers.base import AbstractBroker
-from ingestor.message import TaskMessage
+from core.message import TaskMessage
 
 
 class MemoryBroker(AbstractBroker):

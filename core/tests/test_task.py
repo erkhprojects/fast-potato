@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from brokers.memory import MemoryBroker
 from digester.depends import Depends
-from ingestor import FastPotato, TaskMessage
+from core import FastPotato, TaskMessage
 
 
 app = FastPotato("test_app", broker=MemoryBroker())

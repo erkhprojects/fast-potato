@@ -36,7 +36,7 @@ class FastPotato:
             @app.task(queue="orders")
             async def process_order(): ...
         """
-        from ingestor.task import Task
+        from core.task import Task
 
         def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> TaskProtocol:
             task_name = f"{self.name}.{f.__qualname__}"

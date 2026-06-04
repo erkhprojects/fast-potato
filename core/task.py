@@ -8,8 +8,8 @@ from typing import Any
 from pydantic import BaseModel
 
 from brokers.base import AbstractBroker
-from digester.depends import _BaseDependency
-from ingestor.message import TaskMessage
+from core.markers import _BaseDependency
+from core.message import TaskMessage
 
 
 def _serialize_arg(value: Any) -> Any:

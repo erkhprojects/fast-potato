@@ -3,9 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-
-class _BaseDependency:
-    """Marker base for all dependency descriptors used as parameter defaults."""
+from core.markers import _BaseDependency
 
 
 class Depends(_BaseDependency):

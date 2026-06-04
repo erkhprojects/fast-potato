@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
-from ingestor.message import TaskMessage
+from core.message import TaskMessage
 
 
 class AbstractBroker(ABC):

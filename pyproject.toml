@@ -19,7 +19,6 @@ all = ["redis>=5.0", "aio-pika>=9.0"]
 [tool.poetry]
 packages = [
     {include = "core"},
-    {include = "ingestor"},
     {include = "digester"},
     {include = "brokers"},
 ]
@@ -30,7 +29,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "core/tests", "ingestor/tests", "digester/tests", "brokers/tests"]
+testpaths = ["tests", "core/tests", "digester/tests", "brokers/tests"]
 
 [dependency-groups]
 dev = [
