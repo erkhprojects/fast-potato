@@ -5,11 +5,12 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
+from brokers.memory import MemoryBroker
 from digester.depends import Depends
 from ingestor import FastPotato, TaskMessage
 
 
-app = FastPotato("test_app")
+app = FastPotato("test_app", broker=MemoryBroker())
 
 
 class Address(BaseModel):
@@ -128,3 +129,46 @@ class TestTaskDependencyParams:
     async def test_send_raises_if_dep_param_passed(self):
         with pytest.raises(TypeError, match="resolved automatically"):
             await task_with_dep.send(order_id=1, config={"env": "bad"})
+
+
+# --- Queue annotation ---
+
+@app.task
+async def default_queue_task() -> None: ...
+
+@app.task(queue="orders")
+async def orders_task() -> None: ...
+
+@app.task(queue="emails")
+async def emails_task() -> None: ...
+
+
+class TestQueueAnnotation:
+    def test_default_queue_when_no_annotation(self):
+        assert default_queue_task.queue == "default"
+
+    def test_custom_queue_stored_on_task(self):
+        assert orders_task.queue == "orders"
+
+    def test_different_queues_on_different_tasks(self):
+        assert orders_task.queue != emails_task.queue
+
+    async def test_queue_included_in_message(self):
+        msg = await orders_task.send()
+        assert msg.queue == "orders"
+
+    async def test_default_queue_in_message(self):
+        msg = await default_queue_task.send()
+        assert msg.queue == "default"
+
+    async def test_queue_survives_json_round_trip(self):
+        msg = await orders_task.send()
+        restored = TaskMessage.model_validate_json(msg.model_dump_json())
+        assert restored.queue == "orders"
+
+    def test_plain_decorator_still_works(self):
+        # @app.task without parens must not break registration
+        assert "test_app.default_queue_task" in app._registry
+
+    def test_factory_decorator_registers_correctly(self):
+        assert "test_app.orders_task" in app._registry

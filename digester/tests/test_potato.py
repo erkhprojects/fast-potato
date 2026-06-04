@@ -132,19 +132,22 @@ class TestPotatoResolution:
 
 class TestFastPotatoAppIntegration:
     def test_app_stores_potato(self):
+        from brokers.memory import MemoryBroker
         from core.app import FastPotato
         config = AppConfig(env="prod")
-        app = FastPotato("test", potato=config)
+        app = FastPotato("test", broker=MemoryBroker(), potato=config)
         assert app.potato is config
 
     def test_app_without_potato_defaults_to_none(self):
+        from brokers.memory import MemoryBroker
         from core.app import FastPotato
-        app = FastPotato("test")
+        app = FastPotato("test", broker=MemoryBroker())
         assert app.potato is None
 
     def test_potato_dep_blocked_from_send(self):
+        from brokers.memory import MemoryBroker
         from core.app import FastPotato
-        app = FastPotato("test", potato=AppConfig(env="test"))
+        app = FastPotato("test", broker=MemoryBroker(), potato=AppConfig(env="test"))
 
         async def my_task(config: AppConfig = Depends[AppConfig]) -> None: ...
 

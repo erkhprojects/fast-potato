@@ -7,6 +7,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from brokers.base import AbstractBroker
 from digester.depends import _BaseDependency
 from ingestor.message import TaskMessage
 
@@ -42,10 +43,21 @@ def _split_params(fn: Callable) -> tuple[set[str], set[str]]:
     return sendable, deps
 
 
+DEFAULT_QUEUE = "default"
+
+
 class Task:
-    def __init__(self, fn: Callable[..., Coroutine[Any, Any, Any]], name: str) -> None:
+    def __init__(
+        self,
+        fn: Callable[..., Coroutine[Any, Any, Any]],
+        name: str,
+        broker: AbstractBroker,
+        queue: str = DEFAULT_QUEUE,
+    ) -> None:
         self._fn = fn
         self.name = name
+        self.queue = queue
+        self._broker = broker
         self._sendable_params, self.dependency_params = _split_params(fn)
 
     async def send(
@@ -71,11 +83,13 @@ class Task:
 
         message = TaskMessage(
             task_name=self.name,
+            queue=self.queue,
             args=[_serialize_arg(a) for a in args],
             kwargs={k: _serialize_arg(v) for k, v in kwargs.items()},
             eta=resolved_eta,
         )
-        # broker publishing will be wired here in Phase 2
+
+        await self._broker.publish(message)
         return message
 
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:

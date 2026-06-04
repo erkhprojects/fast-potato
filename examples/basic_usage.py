@@ -8,9 +8,11 @@ Run with:
 import asyncio
 import json
 from pydantic import BaseModel
+from brokers.memory import MemoryBroker
 from ingestor import FastPotato
 
-app = FastPotato("my_app")
+broker = MemoryBroker()
+app = FastPotato("my_app", broker=broker)
 
 
 # --- Define your models (nested Pydantic is fully supported) ---

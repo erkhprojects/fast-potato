@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, model_validator
 class TaskMessage(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     task_name: str
+    queue: str = "default"
     args: list[Any] = Field(default_factory=list)
     kwargs: dict[str, Any] = Field(default_factory=dict)
     eta: datetime | None = None
