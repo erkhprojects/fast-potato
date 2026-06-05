@@ -4,10 +4,17 @@ from collections.abc import Callable, Coroutine
 from typing import Any
 
 from core.protocols import TaskProtocol
+from core.schedule import Schedule
 
 
 class FastPotato:
-    def __init__(self, name: str, broker: Any, potato: Any = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        broker: Any,
+        potato: Any = None,
+        schedules: list[Schedule] | None = None,
+    ) -> None:
         if broker is None:
             raise ValueError(
                 "FastPotato requires a broker. "
@@ -17,6 +24,7 @@ class FastPotato:
         self.name = name
         self.broker = broker
         self.potato = potato
+        self.schedules: list[Schedule] = schedules or []
         self._registry: dict[str, TaskProtocol] = {}
 
     def task(
@@ -45,10 +53,8 @@ class FastPotato:
             return t
 
         if fn is not None:
-            # used as @app.task — fn is the decorated function
             return _register(fn)
 
-        # used as @app.task(queue="...") — return the decorator
         return _register
 
     def get_task(self, name: str) -> TaskProtocol:
