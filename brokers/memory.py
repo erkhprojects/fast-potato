@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from brokers.base import AbstractBroker
-from core.message import TaskMessage
+from brokers import base
+from call_params import message
 
 
-class MemoryBroker(AbstractBroker):
+class MemoryBroker(base.AbstractBroker):
     """
     In-memory broker with no external dependencies.
 
@@ -19,7 +19,7 @@ class MemoryBroker(AbstractBroker):
     """
 
     def __init__(self) -> None:
-        self.published: list[TaskMessage] = []
+        self.published: list[message.TaskMessage] = []
         self.connected: bool = False
 
     async def connect(self) -> None:
@@ -28,10 +28,10 @@ class MemoryBroker(AbstractBroker):
     async def disconnect(self) -> None:
         self.connected = False
 
-    async def publish(self, message: TaskMessage) -> None:
-        self.published.append(message)
+    async def publish(self, msg: message.TaskMessage) -> None:
+        self.published.append(msg)
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[TaskMessage]:
+    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
         for msg in self.published:
             if msg.queue in queues:
                 yield msg

@@ -7,9 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from brokers.base import AbstractBroker
-from core.markers import _BaseDependency
-from core.message import TaskMessage
+from brokers import base
+from call_params import dependency, message
 
 
 def _serialize_arg(value: Any) -> Any:
@@ -28,14 +27,17 @@ def _split_params(fn: Callable) -> tuple[set[str], set[str]]:
     Inspect fn's signature and return (sendable_params, dependency_params).
 
     sendable_params  — regular params the caller must/can pass via send()
-    dependency_params — params declared with Depends(), resolved at execution time
+    dependency_params — params declared with Depends() (default-value or Annotated
+                        form), resolved at execution time
     """
     sig = inspect.signature(fn)
+    hints = dependency._resolved_hints(fn)
     sendable: set[str] = set()
     deps: set[str] = set()
 
     for name, param in sig.parameters.items():
-        if isinstance(param.default, _BaseDependency):
+        marker, _ = dependency._param_dependency(param, hints)
+        if marker is not None:
             deps.add(name)
         else:
             sendable.add(name)
@@ -51,7 +53,7 @@ class Task:
         self,
         fn: Callable[..., Coroutine[Any, Any, Any]],
         name: str,
-        broker: AbstractBroker,
+        broker: base.AbstractBroker,
         queue: str = DEFAULT_QUEUE,
     ) -> None:
         self._fn = fn
@@ -67,7 +69,7 @@ class Task:
         eta: datetime | None = None,
         queue: str | None = None,
         **kwargs: Any,
-    ) -> TaskMessage:
+    ) -> message.TaskMessage:
         if delay is not None and eta is not None:
             raise ValueError("Provide either 'delay' or 'eta', not both.")
 
@@ -82,7 +84,7 @@ class Task:
         if delay is not None:
             resolved_eta = datetime.now(tz=timezone.utc) + timedelta(seconds=delay)
 
-        message = TaskMessage(
+        msg = message.TaskMessage(
             task_name=self.name,
             queue=queue if queue is not None else self.queue,
             args=[_serialize_arg(a) for a in args],
@@ -90,8 +92,8 @@ class Task:
             eta=resolved_eta,
         )
 
-        await self._broker.publish(message)
-        return message
+        await self._broker.publish(msg)
+        return msg
 
     async def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return await self._fn(*args, **kwargs)

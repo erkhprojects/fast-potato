@@ -5,12 +5,12 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
-from brokers.memory import MemoryBroker
-from digester.depends import Depends
-from core import FastPotato, TaskMessage
+import brokers
+import call_params
+import driver
 
 
-app = FastPotato("test_app", broker=MemoryBroker())
+app = driver.app.FastPotato("test_app", broker=brokers.memory.MemoryBroker())
 
 
 class Address(BaseModel):
@@ -52,7 +52,7 @@ class TestTaskRegistration:
 class TestTaskSend:
     async def test_send_returns_task_message(self):
         msg = await add.send(1, 2)
-        assert isinstance(msg, TaskMessage)
+        assert isinstance(msg, call_params.message.TaskMessage)
 
     async def test_send_stores_args(self):
         msg = await add.send(3, 4)
@@ -92,7 +92,7 @@ class TestPydanticArgSerialization:
     async def test_message_round_trips_json(self):
         user = User(name="Clara", age=28, address=Address(city="Rome", country="IT"))
         msg = await greet.send(user)
-        restored = TaskMessage.model_validate_json(msg.model_dump_json())
+        restored = call_params.message.TaskMessage.model_validate_json(msg.model_dump_json())
         assert restored.id == msg.id
 
 
@@ -109,7 +109,7 @@ async def get_config() -> dict:
 
 
 @app.task
-async def task_with_dep(order_id: int, config: dict = Depends(get_config)) -> str:
+async def task_with_dep(order_id: int, config: dict = call_params.dependency.Depends(get_config)) -> str:
     return f"{order_id}:{config['env']}"
 
 
@@ -163,7 +163,7 @@ class TestQueueAnnotation:
 
     async def test_queue_survives_json_round_trip(self):
         msg = await orders_task.send()
-        restored = TaskMessage.model_validate_json(msg.model_dump_json())
+        restored = call_params.message.TaskMessage.model_validate_json(msg.model_dump_json())
         assert restored.queue == "orders"
 
     def test_plain_decorator_still_works(self):

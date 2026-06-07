@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 
-from core.message import TaskMessage
+from call_params import message
 
 
 class AbstractBroker(ABC):
@@ -33,14 +33,14 @@ class AbstractBroker(ABC):
         """Close the connection cleanly."""
 
     @abstractmethod
-    async def publish(self, message: TaskMessage) -> None:
+    async def publish(self, msg: message.TaskMessage) -> None:
         """
-        Push a message onto the queue named in message.queue.
-        Implementations must respect message.eta for delayed delivery.
+        Push a message onto the queue named in msg.queue.
+        Implementations must respect msg.eta for delayed delivery.
         """
 
     @abstractmethod
-    def consume(self, queues: list[str]) -> AsyncIterator[TaskMessage]:
+    def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
         """
         Yield TaskMessages from the given queues indefinitely.
         Implementations must be async generators or return one.

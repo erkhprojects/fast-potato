@@ -11,14 +11,14 @@ except ImportError as exc:
         "RedisBroker requires the 'redis' extra: pip install fast-potato[redis]"
     ) from exc
 
-from brokers.base import AbstractBroker
-from core.message import TaskMessage
+from brokers import base
+from call_params import message
 
 # Redis key used for the delayed-task sorted set (score = unix timestamp)
 _DELAYED_KEY = "fast_potato:delayed"
 
 
-class RedisBroker(AbstractBroker):
+class RedisBroker(base.AbstractBroker):
     """
     Redis broker using LIST queues (LPUSH / BRPOP) for immediate tasks
     and a ZSET for delayed tasks (eta-based scheduling).
@@ -59,30 +59,30 @@ class RedisBroker(AbstractBroker):
     # Publish
     # ------------------------------------------------------------------
 
-    async def publish(self, message: TaskMessage) -> None:
-        payload = message.model_dump_json()
+    async def publish(self, msg: message.TaskMessage) -> None:
+        payload = msg.model_dump_json()
 
-        if message.eta is None:
+        if msg.eta is None:
             # immediate: push to the queue list (LPUSH; workers BRPOP from right)
-            await self._redis.lpush(message.queue, payload)
+            await self._redis.lpush(msg.queue, payload)
         else:
             # delayed: store in a sorted set scored by unix timestamp
-            score = message.eta.timestamp()
+            score = msg.eta.timestamp()
             await self._redis.zadd(_DELAYED_KEY, {payload: score})
 
     # ------------------------------------------------------------------
     # Consume
     # ------------------------------------------------------------------
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[TaskMessage]:
+    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
         """
         Yield messages from the given queues.
         Runs a background loop that promotes due delayed tasks before each BRPOP.
         """
-        async for message in self._consume_loop(queues):
-            yield message
+        async for msg in self._consume_loop(queues):
+            yield msg
 
-    async def _consume_loop(self, queues: list[str]) -> AsyncIterator[TaskMessage]:
+    async def _consume_loop(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
         while True:
             await self._promote_delayed(queues)
 
@@ -91,7 +91,7 @@ class RedisBroker(AbstractBroker):
                 continue
 
             _, payload = result
-            yield TaskMessage.model_validate_json(payload)
+            yield message.TaskMessage.model_validate_json(payload)
 
     async def _promote_delayed(self, active_queues: list[str]) -> None:
         """Move any delayed tasks whose eta has passed into their target queue."""
@@ -99,9 +99,9 @@ class RedisBroker(AbstractBroker):
         due: list[str] = await self._redis.zrangebyscore(_DELAYED_KEY, "-inf", now)
 
         for payload in due:
-            message = TaskMessage.model_validate_json(payload)
-            if message.queue in active_queues:
+            msg = message.TaskMessage.model_validate_json(payload)
+            if msg.queue in active_queues:
                 pipe = self._redis.pipeline()
-                pipe.lpush(message.queue, payload)
+                pipe.lpush(msg.queue, payload)
                 pipe.zrem(_DELAYED_KEY, payload)
                 await pipe.execute()

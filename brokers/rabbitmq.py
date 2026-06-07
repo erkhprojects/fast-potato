@@ -9,11 +9,11 @@ except ImportError as exc:
         "RabbitMQBroker requires the 'rabbitmq' extra: pip install fast-potato[rabbitmq]"
     ) from exc
 
-from brokers.base import AbstractBroker
-from core.message import TaskMessage
+from brokers import base
+from call_params import message
 
 
-class RabbitMQBroker(AbstractBroker):
+class RabbitMQBroker(base.AbstractBroker):
     """
     RabbitMQ broker using aio-pika.
 
@@ -33,9 +33,9 @@ class RabbitMQBroker(AbstractBroker):
     async def disconnect(self) -> None:
         raise NotImplementedError("RabbitMQBroker.disconnect() — coming in Phase 3")
 
-    async def publish(self, message: TaskMessage) -> None:
+    async def publish(self, msg: message.TaskMessage) -> None:
         raise NotImplementedError("RabbitMQBroker.publish() — coming in Phase 3")
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[TaskMessage]:
+    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
         raise NotImplementedError("RabbitMQBroker.consume() — coming in Phase 3")
         yield  # make Python treat this as an async generator
