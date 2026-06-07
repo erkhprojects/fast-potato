@@ -65,6 +65,7 @@ class Task:
         *args: Any,
         delay: float | None = None,
         eta: datetime | None = None,
+        queue: str | None = None,
         **kwargs: Any,
     ) -> TaskMessage:
         if delay is not None and eta is not None:
@@ -83,7 +84,7 @@ class Task:
 
         message = TaskMessage(
             task_name=self.name,
-            queue=self.queue,
+            queue=queue if queue is not None else self.queue,
             args=[_serialize_arg(a) for a in args],
             kwargs={k: _serialize_arg(v) for k, v in kwargs.items()},
             eta=resolved_eta,

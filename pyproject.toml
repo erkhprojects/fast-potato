@@ -14,13 +14,16 @@ dependencies = [
 [project.optional-dependencies]
 redis = ["redis>=5.0"]
 rabbitmq = ["aio-pika>=9.0"]
-all = ["redis>=5.0", "aio-pika>=9.0"]
+postgres-cdc = ["psycopg[binary]>=3.1"]
+mongodb-cdc = ["motor>=3.3"]
+all = ["redis>=5.0", "aio-pika>=9.0", "psycopg[binary]>=3.1", "motor>=3.3"]
 
 [tool.poetry]
 packages = [
     {include = "core"},
     {include = "digester"},
     {include = "brokers"},
+    {include = "cdc"},
 ]
 
 [build-system]
@@ -29,7 +32,9 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests", "core/tests", "digester/tests", "brokers/tests"]
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests", "core/tests", "digester/tests", "brokers/tests", "cdc/tests"]
+markers = ["integration: marks tests as integration tests requiring external services"]
 
 [dependency-groups]
 dev = [

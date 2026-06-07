@@ -172,3 +172,30 @@ class TestQueueAnnotation:
 
     def test_factory_decorator_registers_correctly(self):
         assert "test_app.orders_task" in app._registry
+
+
+class TestQueueOverrideOnSend:
+    async def test_override_replaces_task_queue(self):
+        msg = await orders_task.send(queue="priority")
+        assert msg.queue == "priority"
+
+    async def test_no_override_uses_task_queue(self):
+        msg = await orders_task.send()
+        assert msg.queue == "orders"
+
+    async def test_override_on_default_queue_task(self):
+        msg = await default_queue_task.send(queue="urgent")
+        assert msg.queue == "urgent"
+
+    async def test_override_does_not_mutate_task_queue(self):
+        await orders_task.send(queue="priority")
+        assert orders_task.queue == "orders"
+
+    async def test_override_with_delay(self):
+        msg = await orders_task.send(delay=10, queue="priority")
+        assert msg.queue == "priority"
+        assert msg.eta is not None
+
+    async def test_override_published_to_correct_queue(self):
+        msg = await orders_task.send(queue="vip")
+        assert app.broker.published[-1].queue == "vip"

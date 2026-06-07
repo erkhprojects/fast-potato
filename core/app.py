@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 from collections.abc import Callable, Coroutine
 from typing import Any
 
@@ -14,6 +15,8 @@ class FastPotato:
         broker: Any,
         potato: Any = None,
         schedules: list[Schedule] | None = None,
+        include: list[str] | None = None,
+        cdc: Any = None,
     ) -> None:
         if broker is None:
             raise ValueError(
@@ -26,6 +29,28 @@ class FastPotato:
         self.potato = potato
         self.schedules: list[Schedule] = schedules or []
         self._registry: dict[str, TaskProtocol] = {}
+        self._include: list[str] = include or []
+        self._cdc = cdc
+        self._cdc_registry: dict[tuple[str, Any], list[Callable]] = {}
+
+    def autodiscover(self) -> None:
+        """
+        Import every module listed in `include` so their @app.task decorators run
+        and tasks register themselves into the registry.
+
+        Called automatically by the worker before starting the consume loop.
+        Can also be called manually if needed.
+
+        Example:
+            app = FastPotato(
+                "my_app",
+                broker=RedisBroker(...),
+                include=["myapp.orders.tasks", "myapp.emails.tasks"],
+            )
+            app.autodiscover()  # all tasks now in registry
+        """
+        for module_path in self._include:
+            importlib.import_module(module_path)
 
     def task(
         self,
@@ -62,3 +87,37 @@ class FastPotato:
             return self._registry[name]
         except KeyError:
             raise KeyError(f"Task '{name}' is not registered in app '{self.name}'.")
+
+    def on_change(
+        self,
+        *,
+        table: str | None = None,
+        collection: str | None = None,
+        op: list[str] | None = None,
+    ) -> Callable:
+        from cdc.base import Operation
+
+        source = table or collection
+        if source is None:
+            raise ValueError("Provide 'table' (Postgres) or 'collection' (MongoDB)")
+        ops = [Operation(o) for o in (op or ["insert", "update", "delete"])]
+
+        def decorator(fn: Callable) -> Callable:
+            for operation in ops:
+                key = (source, operation)
+                self._cdc_registry.setdefault(key, []).append(fn)
+            return fn
+
+        return decorator
+
+    async def _dispatch_cdc_event(self, event: Any) -> None:
+        key = (event.source, event.op)
+        for handler in self._cdc_registry.get(key, []):
+            await handler(event)
+
+    async def _run_cdc(self) -> None:
+        if self._cdc is None:
+            return
+        async with self._cdc:
+            async for event in self._cdc.stream():
+                await self._dispatch_cdc_event(event)
