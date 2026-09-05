@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import typing
-from collections.abc import AsyncGenerator, Callable, Generator
+from collections.abc import AsyncGenerator, Callable, Coroutine, Generator
 from typing import Annotated, Any, get_args, get_origin
 
 
@@ -70,15 +70,26 @@ class PotatoDepends(_BaseDependency):
         return f"Depends[{self.potato_type.__name__}]"
 
 
-def _resolved_hints(fn: Callable) -> dict[str, Any]:
+def resolved_hints(fn: Callable) -> dict[str, Any]:
     """
-    Resolved type hints for fn (with Annotated metadata preserved), or {} when
-    they cannot be evaluated.
+    Return a dictionary mapping parameter names to their evaluated types.
 
-    Using get_type_hints means string annotations produced by
-    ``from __future__ import annotations`` are resolved back to real objects, so
-    the ``Annotated[T, Depends(...)]`` marker is visible. For a class, the hints
-    of its ``__init__`` are returned, matching ``inspect.signature(cls)``.
+    Unlike standard tools that discard metadata, this keeps `Depends(...)`
+    inside `Annotated` and inspects `__init__` when given a class.
+
+    Examples:
+        # 1. Functions with Annotated dependencies:
+        async def my_task(order_id: int, db: Annotated[Database, Depends(get_db)]): ...
+        resolved_hints(my_task)
+        # -> {"order_id": int, "db": Annotated[Database, Depends(get_db)]}
+
+        # 2. Classes (inspects __init__ parameters):
+        class Service:
+            def __init__(self, db: Database = Depends(get_db)): ...
+        resolved_hints(Service)
+        # -> {"db": Database}
+
+        # Returns {} safely if any annotation cannot be evaluated.
     """
     target = fn.__init__ if inspect.isclass(fn) else fn
     try:
@@ -87,19 +98,18 @@ def _resolved_hints(fn: Callable) -> dict[str, Any]:
         return {}
 
 
-def _param_dependency(
-    param: inspect.Parameter, hints: dict[str, Any]
+def extract_dependency(
+    default: Any = inspect.Parameter.empty,
+    annotation: Any = inspect.Parameter.empty,
 ) -> tuple[_BaseDependency | None, Any]:
     """
-    Inspect one parameter and return ``(marker, base_type)``.
+    Inspect a parameter's default value and type annotation and return ``(marker, base_type)``.
 
     ``marker`` is the dependency descriptor for the parameter — sourced from the
     default-value form ``x: T = Depends(...)`` or the ``Annotated[T, Depends(...)]``
     form — or None when the parameter is not a dependency. ``base_type`` is the
     underlying type T, used to infer the callable for a bare ``Depends()``.
     """
-    annotation = hints.get(param.name, param.annotation)
-
     # Annotated[T, Depends(...)] form
     if get_origin(annotation) is Annotated:
         args = get_args(annotation)
@@ -108,13 +118,13 @@ def _param_dependency(
                 return meta, args[0]
 
     # x: T = Depends(...) default-value form
-    if isinstance(param.default, _BaseDependency):
+    if isinstance(default, _BaseDependency):
         base_type = annotation
         if get_origin(base_type) is Annotated:
             base_type = get_args(base_type)[0]
         if isinstance(base_type, str) or base_type is inspect.Parameter.empty:
             base_type = None
-        return param.default, base_type
+        return default, base_type
 
     return None, None
 
@@ -132,7 +142,7 @@ class DependencyResolver:
 
     Example:
         async with DependencyResolver(potato=app.potato) as resolver:
-            injected = await resolver.resolve(my_task_fn)
+            injected = await resolver.resolve_params(my_task_fn)
             await my_task_fn(**real_args, **injected)
     """
 
@@ -142,31 +152,46 @@ class DependencyResolver:
         # (kind, generator) pairs in resolution order; kind is "sync" or "async"
         self._generators: list[tuple[str, Generator | AsyncGenerator]] = []
 
-    async def resolve(self, fn: Callable) -> dict[str, Any]:
+    async def resolve_params(self, fn: Callable) -> dict[str, Any]:
         """Return {param_name: resolved_value} for every dependency param of fn."""
+        # E.g. for fn(order_id: int, db: Database = Depends(get_db)):
+        # sig.parameters -> {"order_id": <Parameter "order_id: int">, "db": <Parameter "db: Database = Depends(...)">}
         sig = inspect.signature(fn)
-        hints = _resolved_hints(fn)
+        hints = resolved_hints(fn)
         injected: dict[str, Any] = {}
 
         for name, param in sig.parameters.items():
-            marker, base_type = _param_dependency(param, hints)
-            if marker is None:
-                continue
-            if isinstance(marker, PotatoDepends):
-                injected[name] = self._resolve_potato(marker)
-            else:  # Depends
-                dep = marker.dependency
-                if dep is None:  # bare Depends() — infer the callable from the type
-                    dep = base_type
-                if dep is None or not callable(dep):
+            annotation = hints.get(name, param.annotation)
+            marker, base_type = extract_dependency(param.default, annotation)
+            match marker:
+                case None:
+                    continue
+                case PotatoDepends():
+                    injected[name] = self._resolve_potato(marker)
+                case Depends():
+                    if marker.dependency is not None:
+                        # Explicit callable provided, e.g. db: Database = Depends(get_db)
+                        dep = marker.dependency
+                    else:
+                        # Bare Depends(), e.g. svc: Service = Depends() or svc: Annotated[Service, Depends()]
+                        if callable(base_type):
+                            dep = base_type
+                        else:
+                            raise TypeError(
+                                f"Bare Depends() on parameter {name!r} needs a callable type "
+                                "annotation to infer the dependency, e.g. "
+                                "`x: MyClass = Depends()` or `x: Annotated[MyClass, Depends()]`."
+                            )
+                    injected[name] = await self._call_provider(dep)
+                case _:
                     raise TypeError(
-                        f"Bare Depends() on parameter {name!r} needs a callable type "
-                        "annotation to infer the dependency, e.g. "
-                        "`x: MyClass = Depends()` or `x: Annotated[MyClass, Depends()]`."
+                        f"Unsupported dependency marker: {marker!r} on parameter {name!r}"
                     )
-                injected[name] = await self._resolve_one(dep)
 
         return injected
+
+    # Backward-compatible alias
+    resolve = resolve_params
 
     def _resolve_potato(self, dep: PotatoDepends) -> Any:
         if self._potato is None:
@@ -181,32 +206,36 @@ class DependencyResolver:
             )
         return self._potato
 
-    async def _resolve_one(self, dep: Callable) -> Any:
+    async def _call_provider(self, dep: Callable) -> Any:
         if dep in self._cache:
             return self._cache[dep]
 
-        sub_kwargs = await self.resolve(dep)
+        sub_kwargs = await self.resolve_params(dep)
         raw = dep(**sub_kwargs)
 
-        if inspect.isasyncgen(raw):
-            value = await raw.__anext__()
-            self._generators.append(("async", raw))
-        elif inspect.isgenerator(raw):
-            value = next(raw)
-            self._generators.append(("sync", raw))
-        elif inspect.iscoroutine(raw):
-            value = await raw
-        else:
-            value = raw
+        match raw:
+            case AsyncGenerator():
+                value = await anext(raw)
+                self._generators.append(("async", raw))
+            case Generator():
+                value = next(raw)
+                self._generators.append(("sync", raw))
+            case Coroutine():
+                value = await raw
+            case _:
+                value = raw
 
         self._cache[dep] = value
         return value
+
+    # Backward-compatible alias
+    _resolve_one = _call_provider
 
     async def _teardown(self) -> None:
         for kind, gen in reversed(self._generators):
             if kind == "async":
                 try:
-                    await gen.__anext__()
+                    await anext(gen)
                 except StopAsyncIteration:
                     pass
             else:

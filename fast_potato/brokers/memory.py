@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 
-from brokers import base
-from call_params import message
+from fast_potato import message
+from fast_potato.brokers import base
 
 
 class MemoryBroker(base.AbstractBroker):

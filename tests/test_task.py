@@ -5,12 +5,11 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import BaseModel
 
-import brokers
-import call_params
-import driver
+from fast_potato import Depends, FastPotato, TaskMessage
+from fast_potato.brokers import MemoryBroker
 
 
-app = driver.app.FastPotato("test_app", broker=brokers.memory.MemoryBroker())
+app = FastPotato("test_app", broker=MemoryBroker())
 
 
 class Address(BaseModel):
@@ -52,7 +51,7 @@ class TestTaskRegistration:
 class TestTaskSend:
     async def test_send_returns_task_message(self):
         msg = await add.send(1, 2)
-        assert isinstance(msg, call_params.message.TaskMessage)
+        assert isinstance(msg, TaskMessage)
 
     async def test_send_stores_args(self):
         msg = await add.send(3, 4)
@@ -92,7 +91,7 @@ class TestPydanticArgSerialization:
     async def test_message_round_trips_json(self):
         user = User(name="Clara", age=28, address=Address(city="Rome", country="IT"))
         msg = await greet.send(user)
-        restored = call_params.message.TaskMessage.model_validate_json(msg.model_dump_json())
+        restored = TaskMessage.model_validate_json(msg.model_dump_json())
         assert restored.id == msg.id
 
 
@@ -109,7 +108,7 @@ async def get_config() -> dict:
 
 
 @app.task
-async def task_with_dep(order_id: int, config: dict = call_params.dependency.Depends(get_config)) -> str:
+async def task_with_dep(order_id: int, config: dict = Depends(get_config)) -> str:
     return f"{order_id}:{config['env']}"
 
 
@@ -129,6 +128,10 @@ class TestTaskDependencyParams:
     async def test_send_raises_if_dep_param_passed(self):
         with pytest.raises(TypeError, match="resolved automatically"):
             await task_with_dep.send(order_id=1, config={"env": "bad"})
+
+    async def test_send_raises_if_dep_param_passed_positionally(self):
+        with pytest.raises(TypeError, match="resolved automatically"):
+            await task_with_dep.send(1, {"env": "bad"})
 
 
 # --- Queue annotation ---
@@ -163,7 +166,7 @@ class TestQueueAnnotation:
 
     async def test_queue_survives_json_round_trip(self):
         msg = await orders_task.send()
-        restored = call_params.message.TaskMessage.model_validate_json(msg.model_dump_json())
+        restored = TaskMessage.model_validate_json(msg.model_dump_json())
         assert restored.queue == "orders"
 
     def test_plain_decorator_still_works(self):

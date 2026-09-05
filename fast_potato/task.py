@@ -7,8 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from brokers import base
-from call_params import dependency, message
+from fast_potato import dependency, message
+from fast_potato.brokers import base
 
 
 def _serialize_arg(value: Any) -> Any:
@@ -22,27 +22,42 @@ def _serialize_arg(value: Any) -> Any:
     return value
 
 
-def _split_params(fn: Callable) -> tuple[set[str], set[str]]:
+def _extract_dep_names(fn: Callable) -> set[str]:
     """
-    Inspect fn's signature and return (sendable_params, dependency_params).
+    Inspect fn's signature and return the set of dependency parameter names.
 
-    sendable_params  — regular params the caller must/can pass via send()
-    dependency_params — params declared with Depends() (default-value or Annotated
-                        form), resolved at execution time
+    These are parameters declared with Depends() (default-value or Annotated form),
+    resolved at execution time by the worker.
     """
+    # E.g. for fn(order_id: int, db: Database = Depends(get_db)):
+    # sig.parameters -> {"order_id": <Parameter "order_id: int">, "db": <Parameter "db: Database = Depends(...)">}
     sig = inspect.signature(fn)
-    hints = dependency._resolved_hints(fn)
-    sendable: set[str] = set()
+    hints = dependency.resolved_hints(fn)
     deps: set[str] = set()
 
     for name, param in sig.parameters.items():
-        marker, _ = dependency._param_dependency(param, hints)
-        if marker is not None:
+        annotation = hints.get(name, param.annotation)
+        dep, _ = dependency.extract_dependency(param.default, annotation)
+        if dep is not None:
             deps.add(name)
-        else:
-            sendable.add(name)
 
-    return sendable, deps
+    return deps
+
+
+def _validate_send_args(
+    sig: inspect.Signature,
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+    dep_params: set[str],
+) -> None:
+    """Raise TypeError if any dependency-injected parameter was passed to send() (via args or kwargs)."""
+    bound = sig.bind_partial(*args, **kwargs)
+    dep_params_passed = dep_params & bound.arguments.keys()
+    if dep_params_passed:
+        raise TypeError(
+            f"Dependency-injected params must not be passed to send(): {dep_params_passed}. "
+            "They are resolved automatically by the worker."
+        )
 
 
 DEFAULT_QUEUE = "default"
@@ -60,7 +75,9 @@ class Task:
         self.name = name
         self.queue = queue
         self._broker = broker
-        self._sendable_params, self.dependency_params = _split_params(fn)
+        self._sig = inspect.signature(fn)
+        self.dependency_params = _extract_dep_names(fn)
+        self._sendable_params = set(self._sig.parameters.keys()) - self.dependency_params
 
     async def send(
         self,
@@ -73,12 +90,7 @@ class Task:
         if delay is not None and eta is not None:
             raise ValueError("Provide either 'delay' or 'eta', not both.")
 
-        dep_params_passed = self.dependency_params & kwargs.keys()
-        if dep_params_passed:
-            raise TypeError(
-                f"Dependency-injected params must not be passed to send(): {dep_params_passed}. "
-                "They are resolved automatically by the worker."
-            )
+        _validate_send_args(self._sig, args, kwargs, self.dependency_params)
 
         resolved_eta: datetime | None = eta
         if delay is not None:

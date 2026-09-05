@@ -9,8 +9,8 @@ except ImportError as exc:
         "RabbitMQBroker requires the 'rabbitmq' extra: pip install fast-potato[rabbitmq]"
     ) from exc
 
-from brokers import base
-from call_params import message
+from fast_potato import message
+from fast_potato.brokers import base
 
 
 class RabbitMQBroker(base.AbstractBroker):

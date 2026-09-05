@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import brokers
-import call_params
-import driver
+from fast_potato import FastPotato, TaskMessage
+from fast_potato.brokers import AbstractBroker, MemoryBroker
 
 
 # --- AbstractBroker contract ---
@@ -12,10 +11,10 @@ import driver
 class TestAbstractBrokerContract:
     def test_cannot_instantiate_abstract_broker(self):
         with pytest.raises(TypeError):
-            brokers.base.AbstractBroker()  # type: ignore[abstract]
+            AbstractBroker()  # type: ignore[abstract]
 
     def test_concrete_subclass_must_implement_all_methods(self):
-        class Incomplete(brokers.base.AbstractBroker):
+        class Incomplete(AbstractBroker):
             async def connect(self): ...
             async def disconnect(self): ...
             async def publish(self, msg): ...
@@ -26,20 +25,20 @@ class TestAbstractBrokerContract:
 
     def test_missing_broker_raises_on_app_init(self):
         with pytest.raises(ValueError, match="requires a broker"):
-            driver.app.FastPotato("test", broker=None)  # type: ignore[arg-type]
+            FastPotato("test", broker=None)  # type: ignore[arg-type]
 
 
 # --- Context manager lifecycle ---
 
 class TestBrokerLifecycle:
     async def test_connect_called_on_enter(self):
-        broker = brokers.memory.MemoryBroker()
+        broker = MemoryBroker()
         assert not broker.connected
         async with broker:
             assert broker.connected
 
     async def test_disconnect_called_on_exit(self):
-        broker = brokers.memory.MemoryBroker()
+        broker = MemoryBroker()
         async with broker:
             pass
         assert not broker.connected
@@ -49,8 +48,8 @@ class TestBrokerLifecycle:
 
 class TestBrokerPublish:
     async def test_send_publishes_to_broker(self):
-        broker = brokers.memory.MemoryBroker()
-        app = driver.app.FastPotato("test", broker=broker)
+        broker = MemoryBroker()
+        app = FastPotato("test", broker=broker)
 
         @app.task
         async def my_task(x: int) -> None: ...
@@ -60,8 +59,8 @@ class TestBrokerPublish:
         assert broker.published[0].args == [42]
 
     async def test_published_message_has_correct_queue(self):
-        broker = brokers.memory.MemoryBroker()
-        app = driver.app.FastPotato("test", broker=broker)
+        broker = MemoryBroker()
+        app = FastPotato("test", broker=broker)
 
         @app.task(queue="payments")
         async def pay(order_id: int) -> None: ...
@@ -70,8 +69,8 @@ class TestBrokerPublish:
         assert broker.published[0].queue == "payments"
 
     async def test_published_message_has_correct_task_name(self):
-        broker = brokers.memory.MemoryBroker()
-        app = driver.app.FastPotato("test", broker=broker)
+        broker = MemoryBroker()
+        app = FastPotato("test", broker=broker)
 
         @app.task
         async def process(x: int) -> None: ...
@@ -81,8 +80,8 @@ class TestBrokerPublish:
         assert broker.published[0].task_name.endswith(".process")
 
     async def test_multiple_tasks_publish_to_same_broker(self):
-        broker = brokers.memory.MemoryBroker()
-        app = driver.app.FastPotato("test", broker=broker)
+        broker = MemoryBroker()
+        app = FastPotato("test", broker=broker)
 
         @app.task(queue="a")
         async def task_a() -> None: ...
@@ -100,23 +99,23 @@ class TestBrokerPublish:
 
 class TestBrokerStrategy:
     async def test_swap_broker_implementations(self):
-        class BrokerA(brokers.base.AbstractBroker):
-            published: list[call_params.message.TaskMessage] = []
+        class BrokerA(AbstractBroker):
+            published: list[TaskMessage] = []
             async def connect(self): ...
             async def disconnect(self): ...
             async def publish(self, msg): self.published.append(msg)
             async def consume(self, queues): return; yield  # noqa: unreachable
 
-        class BrokerB(brokers.base.AbstractBroker):
-            published: list[call_params.message.TaskMessage] = []
+        class BrokerB(AbstractBroker):
+            published: list[TaskMessage] = []
             async def connect(self): ...
             async def disconnect(self): ...
             async def publish(self, msg): self.published.append(msg)
             async def consume(self, queues): return; yield  # noqa: unreachable
 
         broker_a, broker_b = BrokerA(), BrokerB()
-        app_a = driver.app.FastPotato("app", broker=broker_a)
-        app_b = driver.app.FastPotato("app", broker=broker_b)
+        app_a = FastPotato("app", broker=broker_a)
+        app_b = FastPotato("app", broker=broker_b)
 
         @app_a.task
         async def task_fn(x: int) -> None: ...

@@ -1,4 +1,4 @@
-from driver.tests._fixtures import shared_app
+from tests._fixtures import shared_app
 
 
 @shared_app.fixture_app.task(queue="emails")

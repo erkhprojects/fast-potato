@@ -40,11 +40,23 @@ class Schedule(BaseModel):
 
     @field_validator("cron")
     @classmethod
-    def _validate_cron(cls, value: str) -> str:
-        if not croniter.is_valid(value):
+    def validate_cron(cls, v: str) -> str:
+        if not croniter.is_valid(v):
             raise ValueError(
-                f"Invalid cron expression: {value!r}. "
-                "Expected 5 fields: minute hour day month weekday. "
-                "Example: '0 * * * *' (every hour)."
+                f"Invalid cron expression: {v!r}. Expected 5 fields, e.g. '0 * * * *'."
             )
-        return value
+        return v
+
+
+def crontab(
+    minute: str = "*",
+    hour: str = "*",
+    day: str = "*",
+    month: str = "*",
+    day_of_week: str = "*",
+) -> str:
+    """Helper to build a 5-field cron expression from named parts."""
+    expr = f"{minute} {hour} {day} {month} {day_of_week}"
+    if not croniter.is_valid(expr):
+        raise ValueError(f"Invalid cron expression: {expr!r}")
+    return expr

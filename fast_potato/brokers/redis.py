@@ -11,8 +11,8 @@ except ImportError as exc:
         "RedisBroker requires the 'redis' extra: pip install fast-potato[redis]"
     ) from exc
 
-from brokers import base
-from call_params import message
+from fast_potato import message
+from fast_potato.brokers import base
 
 # Redis key used for the delayed-task sorted set (score = unix timestamp)
 _DELAYED_KEY = "fast_potato:delayed"

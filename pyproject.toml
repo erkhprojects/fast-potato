@@ -21,9 +21,7 @@ all = ["redis>=5.0", "aio-pika>=9.0"]
 
 [tool.poetry]
 packages = [
-    {include = "driver"},
-    {include = "call_params"},
-    {include = "brokers"},
+    {include = "fast_potato"},
 ]
 
 [build-system]
@@ -33,7 +31,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
-testpaths = ["tests", "driver/tests", "call_params/tests", "brokers/tests"]
+testpaths = ["tests"]
 
 [dependency-groups]
 dev = [

@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import pytest
 
-import brokers
-import driver
-from driver.tests._fixtures import shared_app
+from fast_potato import FastPotato
+from fast_potato.brokers import MemoryBroker
+from tests._fixtures import shared_app
 
 
 class TestAutodiscover:
     def test_tasks_not_registered_before_autodiscover(self):
         # fresh app — nothing imported yet on its own
-        app = driver.app.FastPotato(
+        app = FastPotato(
             "fixture2",
-            broker=brokers.memory.MemoryBroker(),
-            include=["driver.tests._fixtures.orders_tasks"],
+            broker=MemoryBroker(),
+            include=["tests._fixtures.orders_tasks"],
         )
         assert len(app._registry) == 0
 
@@ -33,23 +33,23 @@ class TestAutodiscover:
         assert len(shared_app.fixture_app._registry) == count_after_first
 
     def test_unknown_module_raises(self):
-        app = driver.app.FastPotato(
+        app = FastPotato(
             "bad",
-            broker=brokers.memory.MemoryBroker(),
+            broker=MemoryBroker(),
             include=["myapp.does_not_exist"],
         )
         with pytest.raises(ModuleNotFoundError):
             app.autodiscover()
 
     def test_empty_include_autodiscover_is_noop(self):
-        app = driver.app.FastPotato("empty", broker=brokers.memory.MemoryBroker())
+        app = FastPotato("empty", broker=MemoryBroker())
         app.autodiscover()  # should not raise
         assert app._registry == {}
 
     def test_include_stored_on_app(self):
-        app = driver.app.FastPotato(
+        app = FastPotato(
             "test",
-            broker=brokers.memory.MemoryBroker(),
-            include=["driver.tests._fixtures.orders_tasks"],
+            broker=MemoryBroker(),
+            include=["tests._fixtures.orders_tasks"],
         )
-        assert "driver.tests._fixtures.orders_tasks" in app._include
+        assert "tests._fixtures.orders_tasks" in app._include

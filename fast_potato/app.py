@@ -4,7 +4,8 @@ import importlib
 from collections.abc import Callable, Coroutine
 from typing import Any
 
-from driver import protocols, schedule
+from fast_potato import schedule
+from fast_potato.task import Task
 
 
 class FastPotato:
@@ -26,7 +27,7 @@ class FastPotato:
         self.broker = broker
         self.potato = potato
         self.schedules: list[schedule.Schedule] = schedules or []
-        self._registry: dict[str, protocols.TaskProtocol] = {}
+        self._registry: dict[str, Task] = {}
         self._include: list[str] = include or []
 
     def autodiscover(self) -> None:
@@ -39,11 +40,9 @@ class FastPotato:
         *,
         queue: str = "default",
     ) -> Any:
-        from driver import task
-
-        def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> protocols.TaskProtocol:
+        def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> Task:
             task_name = f"{self.name}.{f.__qualname__}"
-            t = task.Task(fn=f, name=task_name, queue=queue, broker=self.broker)
+            t = Task(fn=f, name=task_name, queue=queue, broker=self.broker)
             self._registry[task_name] = t
             return t
 
@@ -51,7 +50,7 @@ class FastPotato:
             return _register(fn)
         return _register
 
-    def get_task(self, name: str) -> protocols.TaskProtocol:
+    def get_task(self, name: str) -> Task:
         try:
             return self._registry[name]
         except KeyError:
