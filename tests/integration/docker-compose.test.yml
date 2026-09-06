@@ -1,0 +1,69 @@
+services:
+  test:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: test
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      worker-redis:
+        condition: service_started
+      worker-rabbitmq:
+        condition: service_started
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+      SHARED_DIR: "/shared"
+    volumes:
+      - shared-data:/shared
+    command: ["pytest", "tests/integration", "-v", "-s", "--tb=short"]
+
+  worker-redis:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: test
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: "redis://redis:6379/0"
+    volumes:
+      - shared-data:/shared
+    command: ["fast-potato", "-A", "tests.integration.demo_app:app_redis", "-q", "deploy_redis", "-w", "1", "-c", "2"]
+
+  worker-rabbitmq:
+    build:
+      context: ../..
+      dockerfile: tests/integration/Dockerfile
+      target: test
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+    volumes:
+      - shared-data:/shared
+    command: ["fast-potato", "-A", "tests.integration.demo_app:app_rmq", "-q", "deploy_rmq", "-w", "1", "-c", "2"]
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  shared-data:

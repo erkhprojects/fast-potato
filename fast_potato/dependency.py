@@ -98,6 +98,11 @@ def resolved_hints(fn: Callable) -> dict[str, Any]:
         return {}
 
 
+def _is_potato_type(tp: Any) -> bool:
+    """Return True if tp is a subclass of Potato without introducing circular imports."""
+    return isinstance(tp, type) and any(b.__name__ == "Potato" for b in tp.__mro__)
+
+
 def extract_dependency(
     default: Any = inspect.Parameter.empty,
     annotation: Any = inspect.Parameter.empty,
@@ -113,9 +118,20 @@ def extract_dependency(
     # Annotated[T, Depends(...)] form
     if get_origin(annotation) is Annotated:
         args = get_args(annotation)
+        base_type = args[0]
         for meta in args[1:]:
             if isinstance(meta, _BaseDependency):
-                return meta, args[0]
+                if (
+                    isinstance(meta, Depends)
+                    and meta.dependency is None
+                    and _is_potato_type(base_type)
+                ):
+                    return PotatoDepends(base_type), base_type
+                return meta, base_type
+            if isinstance(meta, type) and issubclass(meta, _BaseDependency):
+                if issubclass(meta, Depends) and _is_potato_type(base_type):
+                    return PotatoDepends(base_type), base_type
+                return meta(), base_type
 
     # x: T = Depends(...) default-value form
     if isinstance(default, _BaseDependency):
@@ -124,6 +140,12 @@ def extract_dependency(
             base_type = get_args(base_type)[0]
         if isinstance(base_type, str) or base_type is inspect.Parameter.empty:
             base_type = None
+        if (
+            isinstance(default, Depends)
+            and default.dependency is None
+            and _is_potato_type(base_type)
+        ):
+            return PotatoDepends(base_type), base_type
         return default, base_type
 
     return None, None

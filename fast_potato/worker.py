@@ -165,28 +165,31 @@ class Worker:
             self.concurrency,
         )
 
-        async with self.app.broker:
-            async for msg in self.app.broker.consume(self.queues):
-                if not self._running:
-                    break
+        try:
+            async with self.app.broker:
+                async for msg in self.app.broker.consume(self.queues):
+                    if not self._running:
+                        break
 
-                # Backpressure: wait for an available concurrency slot
-                await self._semaphore.acquire()
+                    # Backpressure: wait for an available concurrency slot
+                    await self._semaphore.acquire()
 
-                async def _task_wrapper(m: message.TaskMessage) -> None:
-                    try:
-                        await self._safe_execute(m)
-                    finally:
-                        self._semaphore.release()
+                    async def _task_wrapper(m: message.TaskMessage) -> None:
+                        try:
+                            await self._safe_execute(m)
+                        finally:
+                            self._semaphore.release()
 
-                task = asyncio.create_task(_task_wrapper(msg))
-                self._active_tasks.add(task)
-                task.add_done_callback(self._active_tasks.discard)
+                    task = asyncio.create_task(_task_wrapper(msg))
+                    self._active_tasks.add(task)
+                    task.add_done_callback(self._active_tasks.discard)
 
-                if not self._running:
-                    break
-
-        await self._drain()
+                    if not self._running:
+                        break
+        except asyncio.CancelledError:
+            self._running = False
+        finally:
+            await self._drain()
 
     async def _drain(self) -> None:
         """Wait for active in-flight tasks to finish during graceful shutdown."""

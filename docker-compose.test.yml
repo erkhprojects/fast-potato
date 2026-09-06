@@ -1,9 +1,0 @@
-version: "3.9"
-
-services:
-  test:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: test
-    command: ["pytest", "-v", "-s", "--tb=short"]

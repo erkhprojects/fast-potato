@@ -40,6 +40,7 @@ class RedisBroker(base.AbstractBroker):
 
     async def connect(self) -> None:
         self._client = await Redis.from_url(self._url, decode_responses=True)
+        await self._client.ping()
 
     async def disconnect(self) -> None:
         if self._client:
@@ -91,7 +92,9 @@ class RedisBroker(base.AbstractBroker):
         while True:
             await self._promote_delayed(queues)
 
-            result = await self._redis.brpop(queues, timeout=int(self._poll_interval))
+            result = await self._redis.brpop(
+                queues, timeout=max(1, int(self._poll_interval))
+            )
             if result is None:
                 continue
 
@@ -101,9 +104,14 @@ class RedisBroker(base.AbstractBroker):
     async def _promote_delayed(self, active_queues: list[str]) -> None:
         """Move any delayed tasks whose eta has passed into their target queue."""
         now = datetime.now(tz=UTC).timestamp()
-        due: list[str] = await self._redis.zrangebyscore(_DELAYED_KEY, "-inf", now)
+        due = await self._redis.zrangebyscore(_DELAYED_KEY, "-inf", now)
 
-        for payload in due:
+        for raw_payload in due:
+            payload = (
+                raw_payload.decode("utf-8")
+                if isinstance(raw_payload, bytes)
+                else str(raw_payload)
+            )
             msg = message.TaskMessage.model_validate_json(payload)
             if msg.queue in active_queues:
                 pipe = self._redis.pipeline()

@@ -6,9 +6,20 @@ from typing import Annotated
 
 import pytest
 
-from fast_potato import DependencyResolver, Depends, FastPotato, extract_dependency
+from fast_potato import (
+    DependencyResolver,
+    Depends,
+    FastPotato,
+    Potato,
+    extract_dependency,
+)
 from fast_potato.brokers import MemoryBroker
-from fast_potato.dependency import _BaseDependency
+from fast_potato.dependency import PotatoDepends, _BaseDependency
+
+
+class PotatoConfig(Potato):
+    env: str = "test"
+
 
 # --- Simple fixtures (functions) ---
 
@@ -436,3 +447,24 @@ class TestExtractDependency:
         marker, base_type = extract_dependency(default=42, annotation=int)
         assert marker is None
         assert base_type is None
+
+    def test_annotated_class_depends(self):
+        marker, base_type = extract_dependency(annotation=Annotated[Service, Depends])
+        assert isinstance(marker, Depends)
+        assert base_type is Service
+
+    def test_annotated_potato_auto_resolution(self):
+        marker, base_type = extract_dependency(
+            annotation=Annotated[PotatoConfig, Depends]
+        )
+        assert isinstance(marker, PotatoDepends)
+        assert marker.potato_type is PotatoConfig
+        assert base_type is PotatoConfig
+
+    def test_default_potato_bare_depends(self):
+        marker, base_type = extract_dependency(
+            default=Depends(), annotation=PotatoConfig
+        )
+        assert isinstance(marker, PotatoDepends)
+        assert marker.potato_type is PotatoConfig
+        assert base_type is PotatoConfig
