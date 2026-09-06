@@ -233,12 +233,12 @@ class DependencyResolver:
 
     async def _teardown(self) -> None:
         for kind, gen in reversed(self._generators):
-            if kind == "async":
+            if kind == "async" and isinstance(gen, AsyncGenerator):
                 try:
                     await anext(gen)
                 except StopAsyncIteration:
                     pass
-            else:
+            elif isinstance(gen, Generator):
                 try:
                     next(gen)
                 except StopIteration:

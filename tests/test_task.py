@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import BaseModel
 
 from fast_potato import Depends, FastPotato, TaskMessage
 from fast_potato.brokers import MemoryBroker
-
 
 app = FastPotato("test_app", broker=MemoryBroker())
 
@@ -63,13 +62,13 @@ class TestTaskSend:
         assert msg.eta is not None
 
     async def test_send_with_eta(self):
-        eta = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        eta = datetime(2030, 1, 1, tzinfo=UTC)
         msg = await add.send(1, 2, eta=eta)
         assert msg.eta == eta
 
     async def test_send_delay_and_eta_raises(self):
         with pytest.raises(ValueError, match="not both"):
-            await add.send(1, 2, delay=10, eta=datetime(2030, 1, 1, tzinfo=timezone.utc))
+            await add.send(1, 2, delay=10, eta=datetime(2030, 1, 1, tzinfo=UTC))
 
     async def test_naive_eta_gets_utc(self):
         msg = await add.send(1, eta=datetime(2030, 6, 1))
@@ -103,6 +102,7 @@ class TestTaskDirectCall:
 
 # --- Dependency injection on Task ---
 
+
 async def get_config() -> dict:
     return {"env": "test"}
 
@@ -123,7 +123,11 @@ class TestTaskDependencyParams:
     async def test_send_excludes_dep_from_message(self):
         msg = await task_with_dep.send(order_id=99)
         assert "config" not in msg.kwargs
-        assert msg.kwargs.get("order_id") == 99 or msg.args == [99] or msg.kwargs == {"order_id": 99}
+        assert (
+            msg.kwargs.get("order_id") == 99
+            or msg.args == [99]
+            or msg.kwargs == {"order_id": 99}
+        )
 
     async def test_send_raises_if_dep_param_passed(self):
         with pytest.raises(TypeError, match="resolved automatically"):
@@ -136,11 +140,14 @@ class TestTaskDependencyParams:
 
 # --- Queue annotation ---
 
+
 @app.task
 async def default_queue_task() -> None: ...
 
+
 @app.task(queue="orders")
 async def orders_task() -> None: ...
+
 
 @app.task(queue="emails")
 async def emails_task() -> None: ...
@@ -200,5 +207,5 @@ class TestQueueOverrideOnSend:
         assert msg.eta is not None
 
     async def test_override_published_to_correct_queue(self):
-        msg = await orders_task.send(queue="vip")
+        await orders_task.send(queue="vip")
         assert app.broker.published[-1].queue == "vip"

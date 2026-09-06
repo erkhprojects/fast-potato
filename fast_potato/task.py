@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable, Coroutine
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel
@@ -14,7 +14,10 @@ from fast_potato.brokers import base
 def _serialize_arg(value: Any) -> Any:
     """Recursively serialize an argument to a JSON-safe structure."""
     if isinstance(value, BaseModel):
-        return {"__pydantic__": type(value).__qualname__, "data": value.model_dump(mode="json")}
+        return {
+            "__pydantic__": type(value).__qualname__,
+            "data": value.model_dump(mode="json"),
+        }
     if isinstance(value, list):
         return [_serialize_arg(v) for v in value]
     if isinstance(value, dict):
@@ -77,7 +80,9 @@ class Task:
         self._broker = broker
         self._sig = inspect.signature(fn)
         self.dependency_params = _extract_dep_names(fn)
-        self._sendable_params = set(self._sig.parameters.keys()) - self.dependency_params
+        self._sendable_params = (
+            set(self._sig.parameters.keys()) - self.dependency_params
+        )
 
     async def send(
         self,
@@ -94,7 +99,7 @@ class Task:
 
         resolved_eta: datetime | None = eta
         if delay is not None:
-            resolved_eta = datetime.now(tz=timezone.utc) + timedelta(seconds=delay)
+            resolved_eta = datetime.now(tz=UTC) + timedelta(seconds=delay)
 
         msg = message.TaskMessage(
             task_name=self.name,

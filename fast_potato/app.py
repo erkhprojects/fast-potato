@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Coroutine
-from typing import Any
+from typing import Any, overload
 
 from pydantic import BaseModel
 
-from fast_potato import schedule, task
+from fast_potato import schedule
+from fast_potato import task as task_module
+from fast_potato.brokers import base
 
 
 class Potato(BaseModel):
@@ -39,10 +41,10 @@ class FastPotato:
     def __init__(
         self,
         name: str,
-        broker: Any,
-        potato: Any = None,
+        broker: base.AbstractBroker,
+        potato: Potato | None = None,
         schedules: list[schedule.Schedule] | None = None,
-        include: list[str] | None = None,
+        task_modules: list[str] | None = None,
     ) -> None:
         if broker is None:
             raise ValueError(
@@ -50,16 +52,42 @@ class FastPotato:
                 "Pass one at init: FastPotato('name', broker=RedisBroker(...)). "
                 "For tests and local dev use MemoryBroker from brokers.memory."
             )
+        if not isinstance(broker, base.AbstractBroker):
+            raise TypeError(
+                f"'broker' must be an instance of AbstractBroker, got {type(broker).__name__}."
+            )
+        if potato is not None and not isinstance(potato, Potato):
+            raise TypeError(
+                f"'potato' must be an instance of Potato, got {type(potato).__name__}."
+            )
         self.name = name
-        self.broker = broker
-        self.potato = potato
+        self.broker: base.AbstractBroker = broker
+        self.potato: Potato | None = potato
         self.schedules: list[schedule.Schedule] = schedules or []
-        self._registry: dict[str, task.Task] = {}
-        self._include: list[str] = include or []
+        self._registry: dict[str, task_module.Task] = {}
+        self.task_modules: list[str] = task_modules or []
 
     def autodiscover(self) -> None:
-        for module_path in self._include:
+        for module_path in self.task_modules:
             importlib.import_module(module_path)
+
+    @overload
+    def task(
+        self,
+        fn: Callable[..., Coroutine[Any, Any, Any]],
+        *,
+        queue: str = "default",
+    ) -> task_module.Task:
+        """Bare decorator (e.g. ``@app.task``): directly registers the coroutine as a Task."""
+
+    @overload
+    def task(
+        self,
+        fn: None = None,
+        *,
+        queue: str = "default",
+    ) -> Callable[[Callable[..., Coroutine[Any, Any, Any]]], task_module.Task]:
+        """Parameterized decorator (e.g. ``@app.task(queue='urgent')``): returns a decorator to register the Task."""
 
     def task(
         self,
@@ -67,9 +95,11 @@ class FastPotato:
         *,
         queue: str = "default",
     ) -> Any:
-        def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> task.Task:
+        """Register an async function as a task on this application."""
+
+        def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> task_module.Task:
             task_name = f"{self.name}.{f.__qualname__}"
-            t = task.Task(fn=f, name=task_name, queue=queue, broker=self.broker)
+            t = task_module.Task(fn=f, name=task_name, queue=queue, broker=self.broker)
             self._registry[task_name] = t
             return t
 
@@ -77,8 +107,10 @@ class FastPotato:
             return _register(fn)
         return _register
 
-    def get_task(self, name: str) -> task.Task:
+    def get_task(self, name: str) -> task_module.Task:
         try:
             return self._registry[name]
-        except KeyError:
-            raise KeyError(f"Task '{name}' is not registered in app '{self.name}'.")
+        except KeyError as exc:
+            raise KeyError(
+                f"Task '{name}' is not registered in app '{self.name}'."
+            ) from exc

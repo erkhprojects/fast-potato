@@ -12,16 +12,15 @@ from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel
 
-from fast_potato import dependency, message
-from fast_potato.app import FastPotato
+from fast_potato import app, dependency, message
 
 logger = logging.getLogger("fast_potato.worker")
 
 
 def deserialize_value(
-        val: Any,
-        annotation: Any = None,
-        globals_dict: dict[str, Any] | None = None,
+    val: Any,
+    annotation: Any = None,
+    globals_dict: dict[str, Any] | None = None,
 ) -> Any:
     """
     Recursively deserialize arguments back into their target types.
@@ -57,7 +56,11 @@ def deserialize_value(
         return data
 
     # 3. Model expected by annotation and raw dict provided
-    if isinstance(annotation, type) and issubclass(annotation, BaseModel) and isinstance(val, dict):
+    if (
+        isinstance(annotation, type)
+        and issubclass(annotation, BaseModel)
+        and isinstance(val, dict)
+    ):
         return annotation.model_validate(val)
 
     # 4. List annotations (e.g. list[User])
@@ -85,10 +88,10 @@ class Worker:
     """
 
     def __init__(
-            self,
-            app: FastPotato,
-            queues: list[str] | None = None,
-            concurrency: int = 10,
+        self,
+        app: app.FastPotato,
+        queues: list[str] | None = None,
+        concurrency: int = 10,
     ) -> None:
         self.app = app
         self.queues = list(queues) if queues is not None else ["default"]
@@ -131,7 +134,9 @@ class Worker:
         """
         Execute a message with logging and exception suppression so the worker loop survives.
         """
-        logger.info("Task %s[%s] received on queue '%s'", msg.task_name, msg.id, msg.queue)
+        logger.info(
+            "Task %s[%s] received on queue '%s'", msg.task_name, msg.id, msg.queue
+        )
         try:
             result = await self.process_message(msg)
             logger.info("Task %s[%s] completed successfully", msg.task_name, msg.id)
@@ -186,7 +191,10 @@ class Worker:
     async def _drain(self) -> None:
         """Wait for active in-flight tasks to finish during graceful shutdown."""
         if self._active_tasks:
-            logger.info("Worker waiting for %d active tasks to complete...", len(self._active_tasks))
+            logger.info(
+                "Worker waiting for %d active tasks to complete...",
+                len(self._active_tasks),
+            )
             await asyncio.gather(*list(self._active_tasks), return_exceptions=True)
         logger.info("Worker stopped cleanly.")
 
@@ -210,7 +218,7 @@ class Worker:
         return count
 
 
-def import_app(app_str: str) -> FastPotato:
+def import_app(app_str: str) -> app.FastPotato:
     """
     Import and return a FastPotato application instance.
 
@@ -227,10 +235,12 @@ def import_app(app_str: str) -> FastPotato:
         try:
             module = importlib.import_module(module_name)
         except ImportError as exc:
-            raise ImportError(f"Could not import module '{module_name}': {exc}") from exc
+            raise ImportError(
+                f"Could not import module '{module_name}': {exc}"
+            ) from exc
 
         try:
-            app = getattr(module, attr_name)
+            app_obj = getattr(module, attr_name)
         except AttributeError as exc:
             raise AttributeError(
                 f"Module '{module_name}' has no attribute '{attr_name}'."
@@ -240,14 +250,18 @@ def import_app(app_str: str) -> FastPotato:
         try:
             module = importlib.import_module(module_name)
         except ImportError as exc:
-            raise ImportError(f"Could not import module '{module_name}': {exc}") from exc
+            raise ImportError(
+                f"Could not import module '{module_name}': {exc}"
+            ) from exc
 
-        if hasattr(module, "app") and isinstance(module.app, FastPotato):
-            app = module.app
+        if hasattr(module, "app") and isinstance(module.app, app.FastPotato):
+            app_obj = module.app
         else:
-            candidates = [v for v in module.__dict__.values() if isinstance(v, FastPotato)]
+            candidates = [
+                v for v in module.__dict__.values() if isinstance(v, app.FastPotato)
+            ]
             if len(candidates) == 1:
-                app = candidates[0]
+                app_obj = candidates[0]
             elif len(candidates) > 1:
                 raise ValueError(
                     f"Multiple FastPotato instances found in '{module_name}'. "
@@ -259,19 +273,19 @@ def import_app(app_str: str) -> FastPotato:
                     "Specify the attribute with 'module:app_name'."
                 )
 
-    if not isinstance(app, FastPotato):
+    if not isinstance(app_obj, app.FastPotato):
         raise TypeError(
-            f"Target '{app_str}' resolved to {type(app).__name__}, expected a FastPotato instance."
+            f"Target '{app_str}' resolved to {type(app_obj).__name__}, expected a FastPotato instance."
         )
 
-    return app
+    return app_obj
 
 
 def run_worker(
-        app_str: str,
-        queues: list[str] | None = None,
-        concurrency: int = 10,
-        log_level: str = "INFO",
+    app_str: str,
+    queues: list[str] | None = None,
+    concurrency: int = 10,
+    log_level: str = "INFO",
 ) -> None:
     """
     Unified worker entrypoint used by both single-process and multi-process modes.
@@ -300,7 +314,7 @@ def run_worker(
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, _sig_handler)
-        except (NotImplementedError, RuntimeError):
+        except NotImplementedError, RuntimeError:
             signal.signal(sig, lambda *_: _sig_handler())
 
     try:

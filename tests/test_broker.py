@@ -5,8 +5,8 @@ import pytest
 from fast_potato import FastPotato, TaskMessage
 from fast_potato.brokers import AbstractBroker, MemoryBroker
 
-
 # --- AbstractBroker contract ---
+
 
 class TestAbstractBrokerContract:
     def test_cannot_instantiate_abstract_broker(self):
@@ -18,6 +18,7 @@ class TestAbstractBrokerContract:
             async def connect(self): ...
             async def disconnect(self): ...
             async def publish(self, msg): ...
+
             # consume missing
 
         with pytest.raises(TypeError):
@@ -29,6 +30,7 @@ class TestAbstractBrokerContract:
 
 
 # --- Context manager lifecycle ---
+
 
 class TestBrokerLifecycle:
     async def test_connect_called_on_enter(self):
@@ -45,6 +47,7 @@ class TestBrokerLifecycle:
 
 
 # --- Publish via Task.send() ---
+
 
 class TestBrokerPublish:
     async def test_send_publishes_to_broker(self):
@@ -97,21 +100,32 @@ class TestBrokerPublish:
 
 # --- Strategy: swapping brokers ---
 
+
 class TestBrokerStrategy:
     async def test_swap_broker_implementations(self):
         class BrokerA(AbstractBroker):
             published: list[TaskMessage] = []
+
             async def connect(self): ...
             async def disconnect(self): ...
-            async def publish(self, msg): self.published.append(msg)
-            async def consume(self, queues): return; yield  # noqa: unreachable
+            async def publish(self, msg):
+                self.published.append(msg)
+
+            async def consume(self, queues):
+                if False:
+                    yield
 
         class BrokerB(AbstractBroker):
             published: list[TaskMessage] = []
+
             async def connect(self): ...
             async def disconnect(self): ...
-            async def publish(self, msg): self.published.append(msg)
-            async def consume(self, queues): return; yield  # noqa: unreachable
+            async def publish(self, msg):
+                self.published.append(msg)
+
+            async def consume(self, queues):
+                if False:
+                    yield
 
         broker_a, broker_b = BrokerA(), BrokerB()
         app_a = FastPotato("app", broker=broker_a)

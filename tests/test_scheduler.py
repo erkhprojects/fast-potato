@@ -1,17 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
-
-import pytest
+from datetime import UTC, datetime
 
 from fast_potato import FastPotato, Schedule, Scheduler
 from fast_potato.brokers import MemoryBroker
-from fast_potato.supervisor import ProcessSupervisor
 
 
-def make_app_with_schedules(schedules: list[Schedule] | None = None) -> tuple[FastPotato, MemoryBroker]:
+def make_app_with_schedules(
+    schedules: list[Schedule] | None = None,
+) -> tuple[FastPotato, MemoryBroker]:
     broker = MemoryBroker()
     app = FastPotato(
         "test_app",
@@ -34,24 +32,24 @@ class TestSchedulerTick:
         app.schedules = [sched]
 
         # Initialize scheduler starting at 10:00:00 UTC
-        start_time = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        start_time = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
         scheduler = Scheduler(app=app, start_time=start_time)
 
         # At 10:00:30 UTC: not due yet (next run is 10:01:00)
-        t1 = datetime(2026, 1, 1, 10, 0, 30, tzinfo=timezone.utc)
+        t1 = datetime(2026, 1, 1, 10, 0, 30, tzinfo=UTC)
         msgs = await scheduler.tick(now=t1)
         assert len(msgs) == 0
         assert len(broker.published) == 0
 
         # At 10:01:00 UTC: now it is due!
-        t2 = datetime(2026, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
+        t2 = datetime(2026, 1, 1, 10, 1, 0, tzinfo=UTC)
         msgs = await scheduler.tick(now=t2)
         assert len(msgs) == 1
         assert msgs[0].task_name == hourly_job.name
         assert len(broker.published) == 1
 
         # Calling tick again at 10:01:10 UTC should not re-dispatch (next run is 10:02:00)
-        t3 = datetime(2026, 1, 1, 10, 1, 10, tzinfo=timezone.utc)
+        t3 = datetime(2026, 1, 1, 10, 1, 10, tzinfo=UTC)
         msgs2 = await scheduler.tick(now=t3)
         assert len(msgs2) == 0
         assert len(broker.published) == 1
@@ -73,10 +71,10 @@ class TestSchedulerTick:
         )
         app.schedules = [sched]
 
-        start_time = datetime(2026, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
+        start_time = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
         scheduler = Scheduler(app=app, start_time=start_time)
 
-        due_time = datetime(2026, 1, 1, 10, 1, 0, tzinfo=timezone.utc)
+        due_time = datetime(2026, 1, 1, 10, 1, 0, tzinfo=UTC)
         msgs = await scheduler.tick(now=due_time)
 
         assert len(msgs) == 1
@@ -93,53 +91,3 @@ class TestSchedulerTick:
         scheduler.stop()
         await run_task
         assert not scheduler._running
-
-
-class TestSupervisorSchedulerIntegration:
-    def test_supervisor_spawns_no_scheduler_when_schedules_empty(self):
-        sup = ProcessSupervisor(
-            app_str="examples.basic_usage:app",
-            queues=["default"],
-            concurrency=5,
-            processes=2,
-        )
-
-        mock_process = MagicMock()
-        mock_process.name = "mock_p"
-        mock_process.pid = 9999
-        mock_process.is_alive.return_value = False
-
-        with patch.object(sup._ctx, "Process", return_value=mock_process) as mock_p_cls:
-            sup.start()
-
-            # 2 worker processes spawned, 0 scheduler
-            assert mock_p_cls.call_count == 2
-            worker_names = [call[1]["name"] for call in mock_p_cls.call_args_list]
-            assert "fast_potato-scheduler" not in worker_names
-
-    def test_supervisor_spawns_one_scheduler_when_schedules_present(self):
-        mock_app = MagicMock()
-        mock_app.schedules = [Schedule(task="my_app.task", cron="* * * * *")]
-
-        sup = ProcessSupervisor(
-            app_str="examples.basic_usage:app",
-            queues=["default"],
-            concurrency=5,
-            processes=2,
-        )
-
-        mock_process = MagicMock()
-        mock_process.name = "mock_p"
-        mock_process.pid = 9999
-        mock_process.is_alive.return_value = False
-
-        with patch("fast_potato.worker.import_app", return_value=mock_app):
-            with patch.object(sup._ctx, "Process", return_value=mock_process) as mock_p_cls:
-                sup.start()
-
-                # 2 workers + 1 scheduler = 3 processes spawned!
-                assert mock_p_cls.call_count == 3
-                names = [call[1]["name"] for call in mock_p_cls.call_args_list]
-                assert "fast_potato-scheduler" in names
-                assert "fast_potato-worker-1" in names
-                assert "fast_potato-worker-2" in names

@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 try:
     from redis.asyncio import Redis
@@ -28,7 +27,9 @@ class RedisBroker(base.AbstractBroker):
         poll_interval: seconds between delayed-task promotion checks (default 1)
     """
 
-    def __init__(self, url: str = "redis://localhost:6379/0", poll_interval: float = 1.0) -> None:
+    def __init__(
+        self, url: str = "redis://localhost:6379/0", poll_interval: float = 1.0
+    ) -> None:
         self._url = url
         self._poll_interval = poll_interval
         self._client: Redis | None = None
@@ -52,7 +53,9 @@ class RedisBroker(base.AbstractBroker):
     @property
     def _redis(self) -> Redis:
         if self._client is None:
-            raise RuntimeError("Broker is not connected. Use 'async with broker:' or call connect().")
+            raise RuntimeError(
+                "Broker is not connected. Use 'async with broker:' or call connect()."
+            )
         return self._client
 
     # ------------------------------------------------------------------
@@ -82,7 +85,9 @@ class RedisBroker(base.AbstractBroker):
         async for msg in self._consume_loop(queues):
             yield msg
 
-    async def _consume_loop(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
+    async def _consume_loop(
+        self, queues: list[str]
+    ) -> AsyncIterator[message.TaskMessage]:
         while True:
             await self._promote_delayed(queues)
 
@@ -95,7 +100,7 @@ class RedisBroker(base.AbstractBroker):
 
     async def _promote_delayed(self, active_queues: list[str]) -> None:
         """Move any delayed tasks whose eta has passed into their target queue."""
-        now = datetime.now(tz=timezone.utc).timestamp()
+        now = datetime.now(tz=UTC).timestamp()
         due: list[str] = await self._redis.zrangebyscore(_DELAYED_KEY, "-inf", now)
 
         for payload in due:

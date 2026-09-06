@@ -7,7 +7,9 @@ Run with:
 
 import asyncio
 import json
+
 from pydantic import BaseModel
+
 from fast_potato import FastPotato
 from fast_potato.brokers import MemoryBroker
 
@@ -16,6 +18,7 @@ app = FastPotato("my_app", broker=broker)
 
 
 # --- Define your models (nested Pydantic is fully supported) ---
+
 
 class Address(BaseModel):
     city: str
@@ -30,6 +33,7 @@ class User(BaseModel):
 
 # --- Register tasks ---
 
+
 @app.task
 async def add(x: int, y: int) -> int:
     return x + y
@@ -41,6 +45,7 @@ async def send_welcome_email(user: User) -> None:
 
 
 # --- Main ---
+
 
 async def main() -> None:
     # 1. Fire immediately
@@ -64,6 +69,7 @@ async def main() -> None:
 
     # 5. Consume and execute queued tasks with the Worker
     from fast_potato import Worker
+
     worker = Worker(app=app)
     print("--- Worker draining queue ---")
     count = await worker.run_until_empty()

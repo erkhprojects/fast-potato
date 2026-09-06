@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Annotated, Any
+from typing import Annotated
 
 import pytest
 from pydantic import BaseModel
@@ -27,7 +27,9 @@ class AppConfig(Potato):
 
 def make_app() -> tuple[FastPotato, MemoryBroker]:
     broker = MemoryBroker()
-    app = FastPotato("test_worker_app", broker=broker, potato=AppConfig(env="production"))
+    app = FastPotato(
+        "test_worker_app", broker=broker, potato=AppConfig(env="production")
+    )
     return app, broker
 
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
@@ -20,5 +20,5 @@ class TaskMessage(BaseModel):
     @model_validator(mode="after")
     def _normalize_eta_timezone(self) -> TaskMessage:
         if self.eta is not None and self.eta.tzinfo is None:
-            self.eta = self.eta.replace(tzinfo=timezone.utc)
+            self.eta = self.eta.replace(tzinfo=UTC)
         return self

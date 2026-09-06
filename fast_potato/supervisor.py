@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 import multiprocessing as mp
 import os
 import signal
-import sys
 import time
 from typing import Any
 
@@ -51,7 +49,10 @@ class ProcessSupervisor:
 
         # Hook signals in master process
         def _master_sig_handler(signum: int, frame: Any) -> None:
-            logger.info("Supervisor received shutdown signal (%s), terminating processes...", signum)
+            logger.info(
+                "Supervisor received shutdown signal (%s), terminating processes...",
+                signum,
+            )
             self.stop()
 
         signal.signal(signal.SIGINT, _master_sig_handler)
@@ -62,7 +63,7 @@ class ProcessSupervisor:
             p = self._ctx.Process(
                 target=worker.run_worker,
                 args=(self.app_str, self.queues, self.concurrency, self.log_level),
-                name=f"fast_potato-worker-{i+1}",
+                name=f"fast_potato-worker-{i + 1}",
             )
             p.start()
             self._workers.append(p)
@@ -113,7 +114,9 @@ class ProcessSupervisor:
         for p in self._workers:
             p.join(timeout=3.0)
             if p.is_alive():
-                logger.warning("Worker %s did not terminate in time, sending SIGKILL...", p.name)
+                logger.warning(
+                    "Worker %s did not terminate in time, sending SIGKILL...", p.name
+                )
                 p.kill()
                 p.join()
         logger.info("All worker processes shut down.")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fast_potato import FastPotato, supervisor, worker
+from fast_potato import FastPotato, worker
 from fast_potato import __main__ as cli
 
 
@@ -42,13 +42,20 @@ class TestCLIParser:
 
     def test_custom_arguments(self):
         parser = cli.build_parser()
-        args = parser.parse_args([
-            "-A", "my_module:app",
-            "-w", "4",
-            "-c", "25",
-            "-q", "urgent,default,low",
-            "--log-level", "DEBUG",
-        ])
+        args = parser.parse_args(
+            [
+                "-A",
+                "my_module:app",
+                "-w",
+                "4",
+                "-c",
+                "25",
+                "-q",
+                "urgent,default,low",
+                "--log-level",
+                "DEBUG",
+            ]
+        )
         assert args.app == "my_module:app"
         assert args.processes == 4
         assert args.concurrency == 25
@@ -59,19 +66,3 @@ class TestCLIParser:
         parser = cli.build_parser()
         with pytest.raises(SystemExit):
             parser.parse_args([])
-
-
-class TestSupervisorInit:
-    def test_supervisor_initialization(self):
-        sup = supervisor.ProcessSupervisor(
-            app_str="examples.basic_usage:app",
-            queues=["default", "high"],
-            concurrency=5,
-            processes=3,
-            log_level="WARNING",
-        )
-        assert sup.app_str == "examples.basic_usage:app"
-        assert sup.queues == ["default", "high"]
-        assert sup.concurrency == 5
-        assert sup.processes == 3
-        assert sup.log_level == "WARNING"

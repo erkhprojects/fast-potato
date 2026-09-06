@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from croniter import croniter
 
-from fast_potato import message, schedule, worker
-from fast_potato.app import FastPotato
+from fast_potato import app, message, schedule, worker
 
 logger = logging.getLogger("fast_potato.scheduler")
 
@@ -26,11 +24,11 @@ class Scheduler:
     Cron scheduler that evaluates app.schedules and dispatches due tasks to the broker.
     """
 
-    def __init__(self, app: FastPotato, start_time: datetime | None = None) -> None:
+    def __init__(self, app: app.FastPotato, start_time: datetime | None = None) -> None:
         self.app = app
         self._running = False
         self._stop_event = asyncio.Event()
-        start = start_time or datetime.now(tz=timezone.utc)
+        start = start_time or datetime.now(tz=UTC)
         self._entries = [_ScheduleEntry(s, start) for s in app.schedules]
 
     async def tick(self, now: datetime | None = None) -> list[message.TaskMessage]:
@@ -38,7 +36,7 @@ class Scheduler:
         Evaluate all schedules against current time and dispatch any due tasks.
         Returns the list of dispatched TaskMessages.
         """
-        current_time = now or datetime.now(tz=timezone.utc)
+        current_time = now or datetime.now(tz=UTC)
         dispatched: list[message.TaskMessage] = []
 
         for entry in self._entries:
@@ -77,12 +75,15 @@ class Scheduler:
 
         async with self.app.broker:
             while self._running:
-                now = datetime.now(tz=timezone.utc)
+                now = datetime.now(tz=UTC)
                 await self.tick(now)
 
                 if self._entries:
                     next_run_time = min(e.next_run for e in self._entries)
-                    sleep_seconds = max(0.1, (next_run_time - datetime.now(tz=timezone.utc)).total_seconds())
+                    sleep_seconds = max(
+                        0.1,
+                        (next_run_time - datetime.now(tz=UTC)).total_seconds(),
+                    )
                 else:
                     sleep_seconds = 1.0
 
@@ -92,7 +93,7 @@ class Scheduler:
                         timeout=min(sleep_seconds, 1.0),
                     )
                     break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
 
         logger.info("Scheduler stopped cleanly.")
@@ -128,7 +129,7 @@ def run_scheduler(app_str: str, log_level: str = "INFO") -> None:
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, _sig_handler)
-        except (NotImplementedError, RuntimeError):
+        except NotImplementedError, RuntimeError:
             signal.signal(sig, lambda *_: _sig_handler())
 
     try:
