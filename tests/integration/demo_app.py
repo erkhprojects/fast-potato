@@ -22,8 +22,36 @@ class DeploymentConfig(Potato):
     prefix: str = "DEPLOY_TEST"
 
 
-def get_auth_token() -> str:
-    return "AUTH_SEC_99"
+# --- Nested Dependencies ---
+
+
+def get_secret_salt() -> str:
+    return "SALT_77"
+
+
+def get_auth_token(salt: Annotated[str, Depends(get_secret_salt)]) -> str:
+    return f"AUTH_SEC_99_{salt}"
+
+
+def get_cluster_env() -> str:
+    return "CLUSTER_EU"
+
+
+def get_node_info(cluster: Annotated[str, Depends(get_cluster_env)]) -> str:
+    return f"NODE_01_{cluster}"
+
+
+class SecurityContext:
+    def __init__(
+        self,
+        token: Annotated[str, Depends(get_auth_token)],
+        node: Annotated[str, Depends(get_node_info)],
+    ) -> None:
+        self.token = token
+        self.node = node
+
+    def format_stamp(self) -> str:
+        return f"{self.token}:{self.node}"
 
 
 # Redis deployment app
@@ -38,10 +66,10 @@ app_redis = FastPotato(
 async def process_and_write_redis(
     payload: str,
     output_filename: str,
-    token: Annotated[str, Depends(get_auth_token)],
+    sec: Annotated[SecurityContext, Depends(SecurityContext)],
     config: Annotated[DeploymentConfig, Depends],
 ) -> None:
-    content = f"{config.prefix}:{token}:{payload}"
+    content = f"{config.prefix}:{sec.format_stamp()}:{payload}"
     out_p = Path(output_filename)
     if out_p.is_absolute() and out_p.parent.exists():
         path = out_p
@@ -61,10 +89,10 @@ app_rmq = FastPotato("deploy_app_rmq", broker=broker_rmq, potato=DeploymentConfi
 async def process_and_write_rmq(
     payload: str,
     output_filename: str,
-    token: Annotated[str, Depends(get_auth_token)],
+    sec: Annotated[SecurityContext, Depends(SecurityContext)],
     config: Annotated[DeploymentConfig, Depends],
 ) -> None:
-    content = f"{config.prefix}:{token}:{payload}"
+    content = f"{config.prefix}:{sec.format_stamp()}:{payload}"
     out_p = Path(output_filename)
     if out_p.is_absolute() and out_p.parent.exists():
         path = out_p

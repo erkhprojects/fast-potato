@@ -2,7 +2,7 @@
 Basic usage example for fast-potato.
 
 Run with:
-    poetry run python examples/basic_usage.py
+    uv run python examples/basic_usage.py
 """
 
 import asyncio
