@@ -22,6 +22,12 @@ compose
 .Trash*
 data/
 test-data/
+tests/integration/testdir4data_dump/*
+!tests/integration/testdir4data_dump/.keep
+tests/integration/test_dir4data_dump/*
+!tests/integration/test_dir4data_dump/.keep
+testdir4data_dump/
+test_dir4data_dump/
 *.gz
 .coverage*
 testfile

@@ -37,7 +37,18 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "mypy>=1.15.0",
     "ruff>=0.9.0",
+    "poethepoet>=0.33.0",
 ]
+
+[tool.poe.tasks]
+test = "pytest tests/test_*.py"
+test-integration = "docker compose -p fast_potato -f tests/integration/docker-compose.test.yml up --build --exit-code-from test --abort-on-container-exit"
+test-integration-local = "pytest tests/integration"
+services-up = "docker compose -p fast_potato -f tests/integration/docker-compose.yml up -d --build"
+services-down = "docker compose -p fast_potato -f tests/integration/docker-compose.yml down"
+lint = "ruff check ."
+format = "ruff format ."
+typecheck = "mypy fast_potato"
 
 [tool.ruff]
 target-version = "py314"

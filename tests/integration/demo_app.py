@@ -8,6 +8,15 @@ from fast_potato import Depends, FastPotato, Potato
 from fast_potato.brokers.rabbitmq import RabbitMQBroker
 from fast_potato.brokers.redis import RedisBroker
 
+# Resolve data dump directory
+shared_dir_env = os.getenv("SHARED_DIR")
+if shared_dir_env:
+    DATA_DIR = Path(shared_dir_env)
+elif Path("/shared").is_dir():
+    DATA_DIR = Path("/shared")
+else:
+    DATA_DIR = Path(__file__).parent / "testdir4data_dump"
+
 
 class DeploymentConfig(Potato):
     prefix: str = "DEPLOY_TEST"
@@ -28,12 +37,16 @@ app_redis = FastPotato(
 @app_redis.task(queue="deploy_redis")
 async def process_and_write_redis(
     payload: str,
-    output_path: str,
+    output_filename: str,
     token: Annotated[str, Depends(get_auth_token)],
     config: Annotated[DeploymentConfig, Depends],
 ) -> None:
     content = f"{config.prefix}:{token}:{payload}"
-    path = Path(output_path)
+    out_p = Path(output_filename)
+    if out_p.is_absolute() and out_p.parent.exists():
+        path = out_p
+    else:
+        path = DATA_DIR / out_p.name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
@@ -47,11 +60,15 @@ app_rmq = FastPotato("deploy_app_rmq", broker=broker_rmq, potato=DeploymentConfi
 @app_rmq.task(queue="deploy_rmq")
 async def process_and_write_rmq(
     payload: str,
-    output_path: str,
+    output_filename: str,
     token: Annotated[str, Depends(get_auth_token)],
     config: Annotated[DeploymentConfig, Depends],
 ) -> None:
     content = f"{config.prefix}:{token}:{payload}"
-    path = Path(output_path)
+    out_p = Path(output_filename)
+    if out_p.is_absolute() and out_p.parent.exists():
+        path = out_p
+    else:
+        path = DATA_DIR / out_p.name
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
