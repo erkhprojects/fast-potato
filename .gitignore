@@ -61,3 +61,4 @@ pytest_output.txt
 .vscode/*
 .vscode
 .DS_Store
+.venv/
