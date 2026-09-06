@@ -61,10 +61,11 @@ async def test_live_worker_deployment_redis(shared_dir: Path) -> None:
                 f"Deployed Redis worker did not create output file {output_file} in time"
             )
 
-        assert (
-            content
-            == f"DEPLOY_TEST:AUTH_SEC_99_SALT_77:NODE_01_CLUSTER_EU:{random_str}"
+        expected = (
+            "DEPLOY_TEST:SYNC_SALT_11:ASYNC_TOK_22:SYNC_GEN_OK:ASYNC_GEN_OK:"
+            f"METRIC_TRACKER_OK:CLUSTER_42_REGION_US:ASYNC_TOK_22:SYNC_SALT_11:{random_str}"
         )
+        assert content == expected
     finally:
         await demo_app.broker_redis.disconnect()
         if output_file.exists():
@@ -108,10 +109,11 @@ async def test_live_worker_deployment_rabbitmq(shared_dir: Path) -> None:
                 f"Deployed RabbitMQ worker did not create output file {output_file} in time"
             )
 
-        assert (
-            content
-            == f"DEPLOY_TEST:AUTH_SEC_99_SALT_77:NODE_01_CLUSTER_EU:{random_str}"
+        expected = (
+            "DEPLOY_TEST:SYNC_SALT_11:ASYNC_TOK_22:SYNC_GEN_OK:ASYNC_GEN_OK:"
+            f"METRIC_TRACKER_OK:CLUSTER_42_REGION_US:ASYNC_TOK_22:SYNC_SALT_11:{random_str}"
         )
+        assert content == expected
     finally:
         await demo_app.broker_rmq.disconnect()
         if output_file.exists():

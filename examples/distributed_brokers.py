@@ -18,7 +18,6 @@ import os
 
 from fast_potato import FastPotato, Potato
 from fast_potato.brokers.base import AbstractBroker
-from fast_potato.brokers.rabbitmq import RabbitMQBroker
 from fast_potato.brokers.redis import RedisBroker
 from fast_potato.worker import Worker
 
@@ -88,11 +87,12 @@ async def main() -> None:
             concurrency=2,
         )
 
-        # Let delayed task become ready
-        await asyncio.sleep(1.2)
-
-        processed = await worker.run_until_empty()
-        print(f"\nWorker finished: {processed} task(s) processed across queues.")
+        worker_task = asyncio.create_task(worker.run())
+        # Let worker consume the ready and delayed messages
+        await asyncio.sleep(2.5)
+        worker.stop()
+        await worker_task
+        print("\nWorker processed tasks and stopped cleanly.")
 
         print("\n3. Distributed CLI Deployment:")
         print("   In production, workers are typically started via the CLI:")

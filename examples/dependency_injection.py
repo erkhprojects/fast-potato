@@ -52,7 +52,7 @@ class FakeDBSession:
 _session_counter = 0
 
 
-async def get_db() -> AsyncGenerator[FakeDBSession, None]:
+async def get_db() -> AsyncGenerator[FakeDBSession]:
     """Yield a database session and ensure it is closed after task completes."""
     global _session_counter
     _session_counter += 1

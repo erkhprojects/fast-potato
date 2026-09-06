@@ -165,10 +165,41 @@ class Worker:
             self.concurrency,
         )
 
+        async def _get_next(it: Any) -> message.TaskMessage:
+            return await anext(it)
+
         try:
             async with self.app.broker:
-                async for msg in self.app.broker.consume(self.queues):
-                    if not self._running:
+                consumer = aiter(self.app.broker.consume(self.queues))
+                while self._running:
+                    next_msg_task: asyncio.Task[message.TaskMessage] = asyncio.create_task(
+                        _get_next(consumer)
+                    )
+                    stop_wait_task = asyncio.create_task(self._stop_event.wait())
+
+                    done, pending = await asyncio.wait(
+                        [next_msg_task, stop_wait_task],
+                        return_when=asyncio.FIRST_COMPLETED,
+                    )
+
+                    for p in pending:
+                        p.cancel()
+                        try:
+                            await p
+                        except (asyncio.CancelledError, Exception):
+                            pass
+
+                    if self._stop_event.is_set() or not self._running:
+                        if hasattr(consumer, "aclose"):
+                            try:
+                                await consumer.aclose()
+                            except Exception:
+                                pass
+                        break
+
+                    try:
+                        msg = next_msg_task.result()
+                    except StopAsyncIteration:
                         break
 
                     # Backpressure: wait for an available concurrency slot
@@ -185,6 +216,11 @@ class Worker:
                     task.add_done_callback(self._active_tasks.discard)
 
                     if not self._running:
+                        if hasattr(consumer, "aclose"):
+                            try:
+                                await consumer.aclose()
+                            except Exception:
+                                pass
                         break
         except asyncio.CancelledError:
             self._running = False
