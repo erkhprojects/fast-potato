@@ -20,6 +20,7 @@ class MemoryBroker(base.AbstractBroker):
 
     def __init__(self) -> None:
         self.published: list[message.TaskMessage] = []
+        self.history: list[message.TaskMessage] = []
         self.connected: bool = False
 
     async def connect(self) -> None:
@@ -30,8 +31,14 @@ class MemoryBroker(base.AbstractBroker):
 
     async def publish(self, msg: message.TaskMessage) -> None:
         self.published.append(msg)
+        self.history.append(msg)
 
     async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
-        for msg in self.published:
+        i = 0
+        while i < len(self.published):
+            msg = self.published[i]
             if msg.queue in queues:
+                self.published.pop(i)
                 yield msg
+            else:
+                i += 1

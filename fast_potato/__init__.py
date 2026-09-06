@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fast_potato.app import FastPotato
+from fast_potato.app import FastPotato, Potato
 from fast_potato.dependency import (
     DependencyResolver,
     Depends,
@@ -9,13 +9,16 @@ from fast_potato.dependency import (
     resolved_hints,
 )
 from fast_potato.message import TaskMessage
-from fast_potato.potato import Potato
 from fast_potato.schedule import Schedule, crontab
+from fast_potato.scheduler import Scheduler
 from fast_potato.task import Task
+from fast_potato.worker import Worker
 
 __all__ = [
     "FastPotato",
     "Task",
+    "Worker",
+    "Scheduler",
     "Depends",
     "PotatoDepends",
     "Potato",

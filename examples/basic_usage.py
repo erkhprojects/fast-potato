@@ -60,7 +60,14 @@ async def main() -> None:
 
     # 4. Call the task function directly (no broker, runs in-process)
     result = await add(3, 4)
-    print("direct call result:", result)
+    print("direct call result:", result, "\n")
+
+    # 5. Consume and execute queued tasks with the Worker
+    from fast_potato import Worker
+    worker = Worker(app=app)
+    print("--- Worker draining queue ---")
+    count = await worker.run_until_empty()
+    print(f"Worker processed {count} tasks successfully.")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,9 @@ redis = ["redis>=5.0"]
 rabbitmq = ["aio-pika>=9.0"]
 all = ["redis>=5.0", "aio-pika>=9.0"]
 
+[project.scripts]
+fast-potato = "fast_potato.__main__:main"
+
 [tool.poetry]
 packages = [
     {include = "fast_potato"},
