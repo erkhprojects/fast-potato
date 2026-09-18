@@ -31,6 +31,11 @@ class Scheduler:
         start = start_time or datetime.now(tz=UTC)
         self._entries = [_ScheduleEntry(s, start) for s in app.schedules]
 
+    @property
+    def running(self) -> bool:
+        """Whether the scheduler loop is currently running."""
+        return self._running
+
     async def tick(self, now: datetime | None = None) -> list[message.TaskMessage]:
         """
         Evaluate all schedules against current time and dispatch any due tasks.

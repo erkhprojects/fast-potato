@@ -84,6 +84,26 @@ class Task:
             set(self._sig.parameters.keys()) - self.dependency_params
         )
 
+    @property
+    def fn(self) -> Callable[..., Coroutine[Any, Any, Any]]:
+        """The underlying coroutine function wrapped by this task."""
+        return self._fn
+
+    @property
+    def sig(self) -> inspect.Signature:
+        """The inspected signature of the underlying coroutine function."""
+        return self._sig
+
+    @property
+    def broker(self) -> base.AbstractBroker:
+        """The message broker configured for this task."""
+        return self._broker
+
+    @property
+    def sendable_params(self) -> set[str]:
+        """Parameter names that must be passed via send() rather than injected."""
+        return self._sendable_params
+
     async def send(
         self,
         *args: Any,

@@ -67,6 +67,11 @@ class FastPotato:
         self._registry: dict[str, task_module.Task] = {}
         self.task_modules: list[str] = task_modules or []
 
+    @property
+    def registry(self) -> dict[str, task_module.Task]:
+        """Dictionary of registered tasks mapped by their qualified name."""
+        return self._registry
+
     def autodiscover(self) -> None:
         for module_path in self.task_modules:
             importlib.import_module(module_path)

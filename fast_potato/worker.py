@@ -12,10 +12,11 @@ from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel
 
-from fast_potato import app, dependency, message
+from fast_potato import app as app_module, dependency, message
 
 logger = logging.getLogger("fast_potato.worker")
 
+#TODO deep review the implementation here
 
 def deserialize_value(
     val: Any,
@@ -89,7 +90,7 @@ class Worker:
 
     def __init__(
         self,
-        app: app.FastPotato,
+        app: app_module.FastPotato,
         queues: list[str] | None = None,
         concurrency: int = 10,
     ) -> None:
@@ -101,6 +102,16 @@ class Worker:
         self._stop_event = asyncio.Event()
         self._active_tasks: set[asyncio.Task] = set()
 
+    @property
+    def running(self) -> bool:
+        """Whether the worker loop is currently running."""
+        return self._running
+
+    @property
+    def active_tasks(self) -> set[asyncio.Task]:
+        """Set of currently running background asyncio.Tasks."""
+        return self._active_tasks
+
     async def process_message(self, msg: message.TaskMessage) -> Any:
         """
         Execute a single task message and return its result.
@@ -108,9 +119,9 @@ class Worker:
         Raises exceptions directly if task lookup, deserialization, or execution fails.
         """
         task = self.app.get_task(msg.task_name)
-        sig = task._sig
-        hints = dependency.resolved_hints(task._fn)
-        globals_dict = getattr(task._fn, "__globals__", {})
+        sig = task.sig
+        hints = dependency.resolved_hints(task.fn)
+        globals_dict = getattr(task.fn, "__globals__", {})
 
         # Bind raw args and kwargs to signature
         bound = sig.bind_partial(*msg.args, **msg.kwargs)
@@ -123,12 +134,12 @@ class Worker:
 
         # Resolve dependencies (Depends / Potato)
         async with dependency.DependencyResolver(potato=self.app.potato) as resolver:
-            injected = await resolver.resolve_params(task._fn)
+            injected = await resolver.resolve_params(task.fn)
             for dep_name, dep_val in injected.items():
                 bound.arguments[dep_name] = dep_val
 
             bound.apply_defaults()
-            return await task._fn(*bound.args, **bound.kwargs)
+            return await task.fn(*bound.args, **bound.kwargs)
 
     async def _safe_execute(self, msg: message.TaskMessage) -> Any:
         """
@@ -257,7 +268,7 @@ class Worker:
         return count
 
 
-def import_app(app_str: str) -> app.FastPotato:
+def import_app(app_str: str) -> app_module.FastPotato:
     """
     Import and return a FastPotato application instance.
 
@@ -293,11 +304,11 @@ def import_app(app_str: str) -> app.FastPotato:
                 f"Could not import module '{module_name}': {exc}"
             ) from exc
 
-        if hasattr(module, "app") and isinstance(module.app, app.FastPotato):
+        if hasattr(module, "app") and isinstance(module.app, app_module.FastPotato):
             app_obj = module.app
         else:
             candidates = [
-                v for v in module.__dict__.values() if isinstance(v, app.FastPotato)
+                v for v in module.__dict__.values() if isinstance(v, app_module.FastPotato)
             ]
             if len(candidates) == 1:
                 app_obj = candidates[0]
@@ -312,7 +323,7 @@ def import_app(app_str: str) -> app.FastPotato:
                     "Specify the attribute with 'module:app_name'."
                 )
 
-    if not isinstance(app_obj, app.FastPotato):
+    if not isinstance(app_obj, app_module.FastPotato):
         raise TypeError(
             f"Target '{app_str}' resolved to {type(app_obj).__name__}, expected a FastPotato instance."
         )
