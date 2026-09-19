@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 
 from fast_potato import message
 
@@ -40,11 +40,18 @@ class AbstractBroker(ABC):
         """
 
     @abstractmethod
-    def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
+    def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
         """
         Yield TaskMessages from the given queues indefinitely.
         Implementations must be async generators or return one.
         """
+
+    async def has_messages(self, queues: list[str]) -> bool:
+        """
+        Check whether any of the given queues currently contain pending messages.
+        Returns False by default if not supported or queues are empty.
+        """
+        return False
 
     async def __aenter__(self) -> AbstractBroker:
         await self.connect()

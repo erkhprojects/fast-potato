@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncGenerator
 
 from fast_potato import message
 from fast_potato.brokers import base
@@ -22,6 +23,7 @@ class MemoryBroker(base.AbstractBroker):
         self.published: list[message.TaskMessage] = []
         self.history: list[message.TaskMessage] = []
         self.connected: bool = False
+        self._notify_event: asyncio.Event = asyncio.Event()
 
     async def connect(self) -> None:
         self.connected = True
@@ -32,13 +34,23 @@ class MemoryBroker(base.AbstractBroker):
     async def publish(self, msg: message.TaskMessage) -> None:
         self.published.append(msg)
         self.history.append(msg)
+        self._notify_event.set()
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
-        i = 0
-        while i < len(self.published):
-            msg = self.published[i]
-            if msg.queue in queues:
-                self.published.pop(i)
-                yield msg
-            else:
-                i += 1
+    async def has_messages(self, queues: list[str]) -> bool:
+        """Return True if any pending message matches the given queues."""
+        return any(m.queue in queues for m in self.published)
+
+    async def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
+        while True:
+            found: message.TaskMessage | None = None
+            for i, msg in enumerate(self.published):
+                if msg.queue in queues:
+                    found = self.published.pop(i)
+                    break
+
+            if found is not None:
+                yield found
+                continue
+
+            self._notify_event.clear()
+            await self._notify_event.wait()

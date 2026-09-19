@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 try:
@@ -78,7 +78,14 @@ class RedisBroker(base.AbstractBroker):
     # Consume
     # ------------------------------------------------------------------
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
+    async def has_messages(self, queues: list[str]) -> bool:
+        """Return True if any of the given queues currently have pending messages."""
+        for q in queues:
+            if await self._redis.llen(q) > 0:
+                return True
+        return False
+
+    async def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
         """
         Yield messages from the given queues.
         Runs a background loop that promotes due delayed tasks before each BRPOP.
@@ -88,7 +95,7 @@ class RedisBroker(base.AbstractBroker):
 
     async def _consume_loop(
         self, queues: list[str]
-    ) -> AsyncIterator[message.TaskMessage]:
+    ) -> AsyncGenerator[message.TaskMessage]:
         while True:
             await self._promote_delayed(queues)
 

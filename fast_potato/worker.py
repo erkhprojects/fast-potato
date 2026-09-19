@@ -8,11 +8,13 @@ import signal
 import sys
 import types
 import typing
+from contextlib import aclosing
 from typing import Any, get_args, get_origin
 
 from pydantic import BaseModel
 
-from fast_potato import app as app_module, dependency, message
+from fast_potato import app as app_module
+from fast_potato import dependency, message
 
 logger = logging.getLogger("fast_potato.worker")
 
@@ -180,8 +182,10 @@ class Worker:
             return await anext(it)
 
         try:
-            async with self.app.broker:
-                consumer = aiter(self.app.broker.consume(self.queues))
+            async with (
+                self.app.broker,
+                aclosing(self.app.broker.consume(self.queues)) as consumer,
+            ):
                 while self._running:
                     next_msg_task: asyncio.Task[message.TaskMessage] = asyncio.create_task(
                         _get_next(consumer)
@@ -201,17 +205,9 @@ class Worker:
                             pass
 
                     if self._stop_event.is_set() or not self._running:
-                        if hasattr(consumer, "aclose"):
-                            try:
-                                await consumer.aclose()
-                            except Exception:
-                                pass
                         break
 
-                    try:
-                        msg = next_msg_task.result()
-                    except StopAsyncIteration:
-                        break
+                    msg = next_msg_task.result()
 
                     # Backpressure: wait for an available concurrency slot
                     await self._semaphore.acquire()
@@ -225,14 +221,6 @@ class Worker:
                     task = asyncio.create_task(_task_wrapper(msg))
                     self._active_tasks.add(task)
                     task.add_done_callback(self._active_tasks.discard)
-
-                    if not self._running:
-                        if hasattr(consumer, "aclose"):
-                            try:
-                                await consumer.aclose()
-                            except Exception:
-                                pass
-                        break
         except asyncio.CancelledError:
             self._running = False
         finally:
@@ -260,8 +248,12 @@ class Worker:
         """
         self._running = True
         count = 0
-        async with self.app.broker:
-            async for msg in self.app.broker.consume(self.queues):
+        async with (
+            self.app.broker,
+            aclosing(self.app.broker.consume(self.queues)) as consumer,
+        ):
+            while await self.app.broker.has_messages(self.queues):
+                msg = await anext(consumer)
                 await self._safe_execute(msg)
                 count += 1
         self._running = False

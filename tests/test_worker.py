@@ -293,3 +293,32 @@ class TestWorkerConcurrency:
         await run_task
 
         assert peak_active <= 2
+
+
+class TestWorkerDynamicExecution:
+    async def test_worker_waits_for_dynamically_published_tasks(self):
+        app, broker = make_app()
+        processed = []
+
+        @app.task
+        async def work(val: int) -> None:
+            processed.append(val)
+
+        worker = Worker(app=app, concurrency=2)
+        worker_task = asyncio.create_task(worker.run())
+
+        try:
+            # Worker starts with empty queue and stays alive (does not exit on empty MemoryBroker)
+            await asyncio.sleep(0.05)
+            assert worker.running
+
+            # Dynamically publish tasks while worker is actively running
+            await work.send(10)
+            await work.send(20)
+
+            # Wait briefly for worker to consume and process
+            await asyncio.sleep(0.05)
+            assert processed == [10, 20]
+        finally:
+            worker.stop()
+            await worker_task

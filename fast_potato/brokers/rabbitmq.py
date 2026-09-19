@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 
 try:
@@ -110,7 +110,7 @@ class RabbitMQBroker(base.AbstractBroker):
                     routing_key=delay_queue_name,
                 )
 
-    async def consume(self, queues: list[str]) -> AsyncIterator[message.TaskMessage]:
+    async def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
         """
         Yield TaskMessages continuously from the specified queues.
         """
