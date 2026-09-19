@@ -5,24 +5,8 @@ from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from pydantic import BaseModel
-
 from fast_potato import dependency, message
 from fast_potato.brokers import base
-
-
-def _serialize_arg(value: Any) -> Any:
-    """Recursively serialize an argument to a JSON-safe structure."""
-    if isinstance(value, BaseModel):
-        return {
-            "__pydantic__": type(value).__qualname__,
-            "data": value.model_dump(mode="json"),
-        }
-    if isinstance(value, list):
-        return [_serialize_arg(v) for v in value]
-    if isinstance(value, dict):
-        return {k: _serialize_arg(v) for k, v in value.items()}
-    return value
 
 
 def _extract_dep_names(fn: Callable) -> set[str]:
@@ -124,8 +108,8 @@ class Task:
         msg = message.TaskMessage(
             task_name=self.name,
             queue=queue if queue is not None else self.queue,
-            args=[_serialize_arg(a) for a in args],
-            kwargs={k: _serialize_arg(v) for k, v in kwargs.items()},
+            args=[message.serialize_value(a) for a in args],
+            kwargs={k: message.serialize_value(v) for k, v in kwargs.items()},
             eta=resolved_eta,
         )
 
