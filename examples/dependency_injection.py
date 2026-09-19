@@ -130,8 +130,11 @@ async def main() -> None:
 
     print("\n=== Worker Executing Task with Recursive Dependency Injection ===")
     worker = Worker(app=app)
-    processed = await worker.run_until_empty()
-    print(f"\nWorker finished: {processed} task(s) processed.")
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.sleep(0.05)
+    worker.stop()
+    await worker_task
+    print("\nWorker finished processing.")
 
 
 if __name__ == "__main__":

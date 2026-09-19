@@ -36,10 +36,6 @@ class MemoryBroker(base.AbstractBroker):
         self.history.append(msg)
         self._notify_event.set()
 
-    async def has_messages(self, queues: list[str]) -> bool:
-        """Return True if any pending message matches the given queues."""
-        return any(m.queue in queues for m in self.published)
-
     async def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
         while True:
             found: message.TaskMessage | None = None

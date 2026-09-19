@@ -87,8 +87,11 @@ async def main() -> None:
     print(f"Dispatched {len(dispatched)} task(s): {[m.task_name for m in dispatched]}")
 
     print("\n--- Worker Processing Dispatched Tasks ---")
-    processed = await worker.run_until_empty()
-    print(f"Worker executed {processed} task(s).")
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.sleep(0.05)
+    worker.stop()
+    await worker_task
+    print("Worker finished executing dispatched tasks.")
 
     # 2. Advance time to 10:00 AM
     # At 10:00 AM, hourly report (0 * * * *) and heartbeat (* * * * *) are due
@@ -98,8 +101,11 @@ async def main() -> None:
     print(f"Dispatched {len(dispatched)} task(s): {[m.task_name for m in dispatched]}")
 
     print("\n--- Worker Processing Dispatched Tasks ---")
-    processed = await worker.run_until_empty()
-    print(f"Worker executed {processed} task(s).")
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.sleep(0.05)
+    worker.stop()
+    await worker_task
+    print("Worker finished executing dispatched tasks.")
 
 
 if __name__ == "__main__":

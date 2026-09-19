@@ -46,13 +46,6 @@ class AbstractBroker(ABC):
         Implementations must be async generators or return one.
         """
 
-    async def has_messages(self, queues: list[str]) -> bool:
-        """
-        Check whether any of the given queues currently contain pending messages.
-        Returns False by default if not supported or queues are empty.
-        """
-        return False
-
     async def __aenter__(self) -> AbstractBroker:
         await self.connect()
         return self

@@ -158,12 +158,10 @@ class Worker:
             logger.exception("Task %s[%s] failed: %s", msg.task_name, msg.id, exc)
             return None
 
-    async def process_one(self, msg: message.TaskMessage) -> Any:
-        """
-        Convenience method to execute a single task message directly.
-        Returns the result or propagates any exception.
-        """
-        return await self.process_message(msg)
+    def _on_task_done(self, task: asyncio.Task[Any]) -> None:
+        """Clean up finished task tracking and release the concurrency semaphore."""
+        self._active_tasks.discard(task)
+        self._semaphore.release()
 
     async def run(self) -> None:
         """
@@ -178,31 +176,23 @@ class Worker:
             self.concurrency,
         )
 
-        async def _get_next(it: Any) -> message.TaskMessage:
-            return await anext(it)
-
         try:
             async with (
                 self.app.broker,
                 aclosing(self.app.broker.consume(self.queues)) as consumer,
             ):
                 while self._running:
-                    next_msg_task: asyncio.Task[message.TaskMessage] = asyncio.create_task(
-                        _get_next(consumer)
-                    )
+                    next_msg_task = asyncio.create_task(anext(consumer))
                     stop_wait_task = asyncio.create_task(self._stop_event.wait())
 
-                    done, pending = await asyncio.wait(
+                    _, pending = await asyncio.wait(
                         [next_msg_task, stop_wait_task],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
 
                     for p in pending:
                         p.cancel()
-                        try:
-                            await p
-                        except (asyncio.CancelledError, Exception):
-                            pass
+                    await asyncio.gather(*pending, return_exceptions=True)
 
                     if self._stop_event.is_set() or not self._running:
                         break
@@ -212,15 +202,9 @@ class Worker:
                     # Backpressure: wait for an available concurrency slot
                     await self._semaphore.acquire()
 
-                    async def _task_wrapper(m: message.TaskMessage) -> None:
-                        try:
-                            await self._safe_execute(m)
-                        finally:
-                            self._semaphore.release()
-
-                    task = asyncio.create_task(_task_wrapper(msg))
+                    task = asyncio.create_task(self._safe_execute(msg))
                     self._active_tasks.add(task)
-                    task.add_done_callback(self._active_tasks.discard)
+                    task.add_done_callback(self._on_task_done)
         except asyncio.CancelledError:
             self._running = False
         finally:
@@ -240,24 +224,6 @@ class Worker:
         """Signal the worker to stop consuming and shut down gracefully."""
         self._running = False
         self._stop_event.set()
-
-    async def run_until_empty(self) -> int:
-        """
-        Consume and process all currently available messages in the configured queues.
-        Returns the count of processed messages.
-        """
-        self._running = True
-        count = 0
-        async with (
-            self.app.broker,
-            aclosing(self.app.broker.consume(self.queues)) as consumer,
-        ):
-            while await self.app.broker.has_messages(self.queues):
-                msg = await anext(consumer)
-                await self._safe_execute(msg)
-                count += 1
-        self._running = False
-        return count
 
 
 def import_app(app_str: str) -> app_module.FastPotato:

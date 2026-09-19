@@ -78,13 +78,6 @@ class RedisBroker(base.AbstractBroker):
     # Consume
     # ------------------------------------------------------------------
 
-    async def has_messages(self, queues: list[str]) -> bool:
-        """Return True if any of the given queues currently have pending messages."""
-        for q in queues:
-            if await self._redis.llen(q) > 0:
-                return True
-        return False
-
     async def consume(self, queues: list[str]) -> AsyncGenerator[message.TaskMessage]:
         """
         Yield messages from the given queues.

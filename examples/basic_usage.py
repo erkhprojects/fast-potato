@@ -71,9 +71,12 @@ async def main() -> None:
     from fast_potato import Worker
 
     worker = Worker(app=app)
-    print("--- Worker draining queue ---")
-    count = await worker.run_until_empty()
-    print(f"Worker processed {count} tasks successfully.")
+    print("--- Worker processing queued tasks ---")
+    worker_task = asyncio.create_task(worker.run())
+    await asyncio.sleep(0.05)
+    worker.stop()
+    await worker_task
+    print("Worker finished processing tasks successfully.")
 
 
 if __name__ == "__main__":
