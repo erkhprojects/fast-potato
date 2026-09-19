@@ -114,7 +114,7 @@ class Worker:
         """Set of currently running background asyncio.Tasks."""
         return self._active_tasks
 
-    async def process_message(self, msg: message.TaskMessage) -> Any:
+    async def execute(self, msg: message.TaskMessage) -> Any:
         """
         Execute a single task message and return its result.
 
@@ -151,7 +151,7 @@ class Worker:
             "Task %s[%s] received on queue '%s'", msg.task_name, msg.id, msg.queue
         )
         try:
-            result = await self.process_message(msg)
+            result = await self.execute(msg)
             logger.info("Task %s[%s] completed successfully", msg.task_name, msg.id)
             return result
         except Exception as exc:

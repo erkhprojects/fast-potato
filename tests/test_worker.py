@@ -34,7 +34,7 @@ def make_app() -> tuple[FastPotato, MemoryBroker]:
 
 
 class TestWorkerBasicExecution:
-    async def test_process_message_simple_task(self):
+    async def test_execute_simple_task(self):
         app, broker = make_app()
 
         @app.task
@@ -43,7 +43,7 @@ class TestWorkerBasicExecution:
 
         msg = await add.send(10, 20)
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == 30
 
     async def test_worker_processes_queued_messages(self):
@@ -82,7 +82,7 @@ class TestWorkerPydanticDeserialization:
         msg = await get_user_name.send(user)
 
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == "Alice"
 
     async def test_deserialize_nested_pydantic_model(self):
@@ -98,7 +98,7 @@ class TestWorkerPydanticDeserialization:
         msg = await get_city.send(user)
 
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == "Tokyo"
 
     async def test_deserialize_list_of_models(self):
@@ -115,7 +115,7 @@ class TestWorkerPydanticDeserialization:
         msg = await count_users.send([u1, u2])
 
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == 2
 
     async def test_deserialize_optional_model(self):
@@ -130,7 +130,7 @@ class TestWorkerPydanticDeserialization:
 
         msg1 = await check_user.send(User(name="Charlie", age=35))
         worker = Worker(app=app)
-        assert await worker.process_message(msg1) == "Charlie"
+        assert await worker.execute(msg1) == "Charlie"
 
 
 async def get_suffix() -> str:
@@ -157,7 +157,7 @@ class TestWorkerDependencyInjection:
 
         msg = await compute.send(5)
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == 305
 
     async def test_generator_dependency_teardown(self):
@@ -176,7 +176,7 @@ class TestWorkerDependencyInjection:
 
         msg = await use_res.send()
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
 
         assert result == "resource"
         assert events == ["acquire", "use_resource", "release"]
@@ -190,7 +190,7 @@ class TestWorkerDependencyInjection:
 
         msg = await get_env.send()
         worker = Worker(app=app)
-        result = await worker.process_message(msg)
+        result = await worker.execute(msg)
         assert result == "production"
 
     async def test_annotated_dependency(self):
@@ -202,11 +202,11 @@ class TestWorkerDependencyInjection:
 
         msg = await shout.send("hello")
         worker = Worker(app=app)
-        assert await worker.process_message(msg) == "hello!!!"
+        assert await worker.execute(msg) == "hello!!!"
 
 
 class TestWorkerResilience:
-    async def test_failing_task_raises_on_process_message(self):
+    async def test_failing_task_raises_on_execute(self):
         app, broker = make_app()
 
         @app.task
@@ -217,7 +217,7 @@ class TestWorkerResilience:
         worker = Worker(app=app)
 
         with pytest.raises(ValueError, match="Task error"):
-            await worker.process_message(msg)
+            await worker.execute(msg)
 
     async def test_safe_execute_suppresses_exception_and_logs(self):
         app, broker = make_app()
@@ -238,7 +238,7 @@ class TestWorkerResilience:
         bad_msg = TaskMessage(task_name="nonexistent.task")
 
         with pytest.raises(KeyError):
-            await worker.process_message(bad_msg)
+            await worker.execute(bad_msg)
 
 
 class TestWorkerQueues:
