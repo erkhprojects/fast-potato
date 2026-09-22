@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from fast_potato import DependencyResolver, Depends, FastPotato, Potato
+from fast_potato import (
+    BaseTypeStrategy,
+    DependencyResolver,
+    Depends,
+    FastPotato,
+    Potato,
+    Worker,
+)
 from fast_potato.brokers import MemoryBroker
 from fast_potato.dependency import PotatoDepends
 from tests._fixtures import shared_app
@@ -256,6 +265,74 @@ class TestPotatoResolution:
 
         assert injected["config"].env == "test"
         assert injected["multiplier"] == 10
+
+
+# --- App-level custom type strategies ---
+
+
+class Color:
+    def __init__(self, r: int, g: int, b: int) -> None:
+        self.r = r
+        self.g = g
+        self.b = b
+
+
+class ColorStrategy(BaseTypeStrategy):
+    def can_handle(self, annotation: Any) -> bool:
+        return annotation is Color
+
+    def deserialize(self, val: Any, annotation: Any, dispatcher: Any) -> Any:
+        if isinstance(val, dict) and val.get("__color__"):
+            return Color(val["r"], val["g"], val["b"])
+        return val
+
+    def can_serialize(self, val: Any) -> bool:
+        return isinstance(val, Color)
+
+    def serialize(self, val: Any, dispatcher: Any) -> Any:
+        return {"__color__": True, "r": val.r, "g": val.g, "b": val.b}
+
+
+class TestAppTypeStrategy:
+    async def test_app_custom_strategy_worker_execution(self):
+        broker = MemoryBroker()
+        custom_app = FastPotato(
+            "color_app",
+            broker=broker,
+            type_strategies=[ColorStrategy()],
+        )
+
+        received_color: list[Color] = []
+
+        @custom_app.task
+        async def process_color(c: Color) -> str:
+            received_color.append(c)
+            return f"rgb({c.r},{c.g},{c.b})"
+
+        msg = await process_color.send(Color(255, 128, 0))
+        assert msg.args[0] == {"__color__": True, "r": 255, "g": 128, "b": 0}
+
+        worker = Worker(custom_app)
+        result = await worker.execute(msg)
+        assert result == "rgb(255,128,0)"
+        assert len(received_color) == 1
+        assert isinstance(received_color[0], Color)
+        assert received_color[0].r == 255
+
+    def test_app_custom_strategy_prioritization(self):
+        strat = ColorStrategy()
+        app_default = FastPotato("app1", broker=MemoryBroker(), type_strategies=[strat])
+        # Default: custom strategies are appended after built-ins
+        assert app_default.type_dispatcher.strategies[-1] is strat
+
+        app_prioritized = FastPotato(
+            "app2",
+            broker=MemoryBroker(),
+            type_strategies=[strat],
+            prioritize_custom_strategies=True,
+        )
+        # Prioritized: custom strategies are prepended before built-ins
+        assert app_prioritized.type_dispatcher.strategies[0] is strat
 
 
 # --- Import convention enforcement ---

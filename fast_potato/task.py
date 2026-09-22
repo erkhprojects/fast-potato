@@ -50,26 +50,38 @@ def _validate_send_args(
 DEFAULT_QUEUE = "default"
 
 
-class Task:
+class Task[**P, R]:
     def __init__(
         self,
-        fn: Callable[..., Coroutine[Any, Any, Any]],
+        fn: Callable[P, Coroutine[Any, Any, R]],
         name: str,
         broker: base.AbstractBroker,
         queue: str = DEFAULT_QUEUE,
+        type_dispatcher: message.TypeDispatcher | None = None,
     ) -> None:
-        self._fn = fn
+        self._fn: Callable[P, Coroutine[Any, Any, R]] = fn
         self.name = name
         self.queue = queue
         self._broker = broker
+        self._type_dispatcher = type_dispatcher or message.default_dispatcher
         self._sig = inspect.signature(fn)
         self.dependency_params = _extract_dep_names(fn)
         self._sendable_params = (
             set(self._sig.parameters.keys()) - self.dependency_params
         )
 
+        hints = dependency.resolved_hints(fn)
+        for param_name in self._sendable_params:
+            param = self._sig.parameters[param_name]
+            annotation = hints.get(param_name, param.annotation)
+            if annotation is inspect.Parameter.empty:
+                raise TypeError(
+                    f"Task '{name}' parameter '{param_name}' is missing a type annotation. "
+                    f"All task parameters must be explicitly typed (e.g. '{param_name}: str', '{param_name}: User')."
+                )
+
     @property
-    def fn(self) -> Callable[..., Coroutine[Any, Any, Any]]:
+    def fn(self) -> Callable[P, Coroutine[Any, Any, R]]:
         """The underlying coroutine function wrapped by this task."""
         return self._fn
 
@@ -108,13 +120,13 @@ class Task:
         msg = message.TaskMessage(
             task_name=self.name,
             queue=queue if queue is not None else self.queue,
-            args=[message.serialize_value(a) for a in args],
-            kwargs={k: message.serialize_value(v) for k, v in kwargs.items()},
+            args=[self._type_dispatcher.serialize(a) for a in args],
+            kwargs={k: self._type_dispatcher.serialize(v) for k, v in kwargs.items()},
             eta=resolved_eta,
         )
 
         await self._broker.publish(msg)
         return msg
 
-    async def __call__(self, *args: Any, **kwargs: Any) -> Any:
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return await self._fn(*args, **kwargs)

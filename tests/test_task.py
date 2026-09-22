@@ -46,6 +46,18 @@ class TestTaskRegistration:
         with pytest.raises(KeyError, match="not registered"):
             app.get_task("test_app.does_not_exist")
 
+    def test_untyped_task_parameter_raises_type_error(self):
+        with pytest.raises(TypeError, match="missing a type annotation"):
+            @app.task
+            async def untyped_param(x):
+                pass
+
+    def test_partially_untyped_task_parameters_raises_type_error(self):
+        with pytest.raises(TypeError, match="missing a type annotation"):
+            @app.task
+            async def partial_untyped(x: int, y):
+                pass
+
 
 class TestTaskSend:
     async def test_send_returns_task_message(self):
@@ -80,11 +92,14 @@ class TestPydanticArgSerialization:
         user = User(name="Alice", age=30, address=Address(city="Berlin", country="DE"))
         msg = await greet.send(user)
         assert isinstance(msg.args[0], dict)
-        assert msg.args[0]["__pydantic__"] == "User"
+        assert msg.args[0]["__type__"] == "User"
+        assert msg.args[0]["data"]["name"] == "Alice"
+        assert msg.args[0]["data"]["age"] == 30
 
     async def test_nested_model_serialized(self):
         user = User(name="Bob", age=25, address=Address(city="Paris", country="FR"))
         msg = await greet.send(user)
+        assert msg.args[0]["__type__"] == "User"
         assert msg.args[0]["data"]["address"]["city"] == "Paris"
 
     async def test_message_round_trips_json(self):

@@ -57,17 +57,15 @@ class Worker:
         task = self.app.get_task(msg.task_name)
         sig = task.sig
         hints = dependency.resolved_hints(task.fn)
-        globals_dict = getattr(task.fn, "__globals__", {})
-
         # Bind raw args and kwargs to signature
         bound = sig.bind_partial(*msg.args, **msg.kwargs)
 
         # Deserialize arguments matching parameters
         for name, val in list(bound.arguments.items()):
             if name not in task.dependency_params:
-                annotation = hints.get(name)
-                bound.arguments[name] = message.deserialize_value(
-                    val, annotation, globals_dict
+                annotation = hints.get(name, sig.parameters[name].annotation)
+                bound.arguments[name] = self.app.type_dispatcher.deserialize(
+                    val, annotation
                 )
 
         # Resolve dependencies (Depends / Potato)

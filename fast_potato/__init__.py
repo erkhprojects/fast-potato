@@ -9,7 +9,9 @@ from fast_potato.dependency import (
     resolved_hints,
 )
 from fast_potato.message import (
+    BaseTypeStrategy,
     TaskMessage,
+    TypeDispatcher,
     deserialize_value,
     serialize_value,
 )
@@ -31,6 +33,8 @@ __all__ = [
     "TaskMessage",
     "serialize_value",
     "deserialize_value",
+    "BaseTypeStrategy",
+    "TypeDispatcher",
     "DependencyResolver",
     "extract_dependency",
     "resolved_hints",

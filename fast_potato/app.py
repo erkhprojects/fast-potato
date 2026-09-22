@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Coroutine
-from typing import Any, overload
+from typing import Any, ParamSpec, TypeVar, overload
 
 from pydantic import BaseModel
 
-from fast_potato import schedule
+from fast_potato import message, schedule
 from fast_potato import task as task_module
 from fast_potato.brokers import base
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 class Potato(BaseModel):
@@ -45,6 +48,8 @@ class FastPotato:
         potato: Potato | None = None,
         schedules: list[schedule.Schedule] | None = None,
         task_modules: list[str] | None = None,
+        type_strategies: list[message.BaseTypeStrategy] | None = None,
+        prioritize_custom_strategies: bool = False,
     ) -> None:
         if broker is None:
             raise ValueError(
@@ -64,11 +69,16 @@ class FastPotato:
         self.broker: base.AbstractBroker = broker
         self.potato: Potato | None = potato
         self.schedules: list[schedule.Schedule] = schedules or []
-        self._registry: dict[str, task_module.Task] = {}
+        self._registry: dict[str, task_module.Task[Any, Any]] = {}
         self.task_modules: list[str] = task_modules or []
+        self.type_strategies: list[message.BaseTypeStrategy] = type_strategies or []
+        self.type_dispatcher: message.TypeDispatcher = message.TypeDispatcher(
+            custom_strategies=self.type_strategies,
+            prioritize_custom=prioritize_custom_strategies,
+        )
 
     @property
-    def registry(self) -> dict[str, task_module.Task]:
+    def registry(self) -> dict[str, task_module.Task[Any, Any]]:
         """Dictionary of registered tasks mapped by their qualified name."""
         return self._registry
 
@@ -79,10 +89,10 @@ class FastPotato:
     @overload
     def task(
         self,
-        fn: Callable[..., Coroutine[Any, Any, Any]],
+        fn: Callable[P, Coroutine[Any, Any, R]],
         *,
         queue: str = "default",
-    ) -> task_module.Task:
+    ) -> task_module.Task[P, R]:
         """Bare decorator (e.g. ``@app.task``): directly registers the coroutine as a Task."""
 
     @overload
@@ -91,20 +101,26 @@ class FastPotato:
         fn: None = None,
         *,
         queue: str = "default",
-    ) -> Callable[[Callable[..., Coroutine[Any, Any, Any]]], task_module.Task]:
+    ) -> Callable[[Callable[P, Coroutine[Any, Any, R]]], task_module.Task[P, R]]:
         """Parameterized decorator (e.g. ``@app.task(queue='urgent')``): returns a decorator to register the Task."""
 
     def task(
         self,
-        fn: Callable[..., Coroutine[Any, Any, Any]] | None = None,
+        fn: Callable[P, Coroutine[Any, Any, R]] | None = None,
         *,
         queue: str = "default",
-    ) -> Any:
+    ) -> task_module.Task[P, R] | Callable[[Callable[P, Coroutine[Any, Any, R]]], task_module.Task[P, R]]:
         """Register an async function as a task on this application."""
 
-        def _register(f: Callable[..., Coroutine[Any, Any, Any]]) -> task_module.Task:
+        def _register(f: Callable[P, Coroutine[Any, Any, R]]) -> task_module.Task[P, R]:
             task_name = f"{self.name}.{f.__qualname__}"
-            t = task_module.Task(fn=f, name=task_name, queue=queue, broker=self.broker)
+            t = task_module.Task(
+                fn=f,
+                name=task_name,
+                queue=queue,
+                broker=self.broker,
+                type_dispatcher=self.type_dispatcher,
+            )
             self._registry[task_name] = t
             return t
 
@@ -112,7 +128,7 @@ class FastPotato:
             return _register(fn)
         return _register
 
-    def get_task(self, name: str) -> task_module.Task:
+    def get_task(self, name: str) -> task_module.Task[Any, Any]:
         try:
             return self._registry[name]
         except KeyError as exc:
