@@ -8,13 +8,7 @@ from fast_potato.dependency import (
     extract_dependency,
     resolved_hints,
 )
-from fast_potato.message import (
-    BaseTypeStrategy,
-    TaskMessage,
-    TypeDispatcher,
-    deserialize_value,
-    serialize_value,
-)
+from fast_potato.message import TaskMessage
 from fast_potato.schedule import Schedule, crontab
 from fast_potato.scheduler import Scheduler
 from fast_potato.task import Task
@@ -31,10 +25,6 @@ __all__ = [
     "Schedule",
     "crontab",
     "TaskMessage",
-    "serialize_value",
-    "deserialize_value",
-    "BaseTypeStrategy",
-    "TypeDispatcher",
     "DependencyResolver",
     "extract_dependency",
     "resolved_hints",
