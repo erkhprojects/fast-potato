@@ -5,6 +5,7 @@ from collections.abc import AsyncGenerator, Generator
 from typing import Annotated
 
 import pytest
+from pydantic import BaseModel
 
 from fast_potato import (
     DependencyResolver,
@@ -19,6 +20,10 @@ from fast_potato.dependency import PotatoDepends, _BaseDependency
 
 class PotatoConfig(Potato):
     env: str = "test"
+
+
+class OrderInput(BaseModel):
+    order_id: int
 
 
 # --- Simple fixtures (functions) ---
@@ -410,15 +415,15 @@ class TestSplitParamsWithAnnotated:
 
         @app.task
         async def my_task(
-            order_id: int,
+            data: OrderInput,
             v: Annotated[int, Depends(get_value)],
         ) -> None: ...
 
-        assert "v" in my_task.dependency_params
-        assert "v" not in my_task._sendable_params
+        assert my_task.dependency_params == {"v"}
+        assert my_task.input_model is OrderInput
 
-        msg = await my_task.send(order_id=1)
-        assert "v" not in msg.kwargs
+        msg = await my_task.send(OrderInput(order_id=1))
+        assert msg.payload == {"order_id": 1}
 
 
 # --- 9. extract_dependency Helper ---

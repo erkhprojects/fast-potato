@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Annotated
 
-from fast_potato import FastPotato, Potato
+from pydantic import BaseModel
+
+from fast_potato import Depends, FastPotato, Potato
 from fast_potato.brokers.base import AbstractBroker
 from fast_potato.brokers.redis import RedisBroker
 from fast_potato.worker import Worker
@@ -35,17 +38,36 @@ broker: AbstractBroker = RedisBroker(url=redis_url, poll_interval=1.0)
 app = FastPotato("distributed_app", broker=broker, potato=ClusterConfig())
 
 
+# --- Task Input Models ---
+# Only the input model travels over the broker, as JSON in TaskMessage.payload.
+
+
+class Payment(BaseModel):
+    payment_id: str
+    amount: float
+
+
+class SmsAlert(BaseModel):
+    phone_number: str
+    message: str
+
+
 # --- Register Tasks on Different Queues ---
 
 
 @app.task(queue="critical")
-async def process_payment(payment_id: str, amount: float) -> None:
-    print(f"[CRITICAL QUEUE] Processing payment {payment_id} for ${amount:.2f}")
+async def process_payment(
+    payment: Payment, cluster: Annotated[ClusterConfig, Depends]
+) -> None:
+    print(
+        f"[CRITICAL QUEUE] Processing payment {payment.payment_id} "
+        f"for ${payment.amount:.2f} in {cluster.datacenter}"
+    )
 
 
 @app.task(queue="notifications")
-async def send_sms_alert(phone_number: str, message: str) -> None:
-    print(f"[NOTIFICATIONS QUEUE] SMS to {phone_number}: {message}")
+async def send_sms_alert(alert: SmsAlert) -> None:
+    print(f"[NOTIFICATIONS QUEUE] SMS to {alert.phone_number}: {alert.message}")
 
 
 @app.task
@@ -69,10 +91,12 @@ async def main() -> None:
 
     try:
         print("\n1. Enqueuing tasks across different queues:")
-        msg1 = await process_payment.send("pay_8892", 150.00)
+        msg1 = await process_payment.send(Payment(payment_id="pay_8892", amount=150.00))
         print(f"   Enqueued to 'critical': task={msg1.task_name} id={msg1.id}")
 
-        msg2 = await send_sms_alert.send("+1234567890", "System update completed.")
+        msg2 = await send_sms_alert.send(
+            SmsAlert(phone_number="+1234567890", message="System update completed.")
+        )
         print(f"   Enqueued to 'notifications': task={msg2.task_name} id={msg2.id}")
 
         # Enqueue with delay
@@ -97,7 +121,7 @@ async def main() -> None:
         print("\n3. Distributed CLI Deployment:")
         print("   In production, workers are typically started via the CLI:")
         print(
-            "   fast-potato -A examples.distributed_brokers:app -q critical -q notifications -w 2 -c 4"
+            "   fast-potato -A examples.distributed_brokers:app -q critical,notifications -w 2 -c 4"
         )
 
     finally:

@@ -98,7 +98,7 @@ def resolved_hints(fn: Callable) -> dict[str, Any]:
         return {}
 
 
-def _is_potato_type(tp: Any) -> bool:
+def is_potato_type(tp: Any) -> bool:
     """Return True if tp is a subclass of Potato without introducing circular imports."""
     return isinstance(tp, type) and any(b.__name__ == "Potato" for b in tp.__mro__)
 
@@ -124,12 +124,12 @@ def extract_dependency(
                 if (
                     isinstance(meta, Depends)
                     and meta.dependency is None
-                    and _is_potato_type(base_type)
+                    and is_potato_type(base_type)
                 ):
                     return PotatoDepends(base_type), base_type
                 return meta, base_type
             if isinstance(meta, type) and issubclass(meta, _BaseDependency):
-                if issubclass(meta, Depends) and _is_potato_type(base_type):
+                if issubclass(meta, Depends) and is_potato_type(base_type):
                     return PotatoDepends(base_type), base_type
                 return meta(), base_type
 
@@ -143,7 +143,7 @@ def extract_dependency(
         if (
             isinstance(default, Depends)
             and default.dependency is None
-            and _is_potato_type(base_type)
+            and is_potato_type(base_type)
         ):
             return PotatoDepends(base_type), base_type
         return default, base_type
@@ -160,6 +160,7 @@ class DependencyResolver:
       async/sync generators. Generators are driven to their first yield, then
       torn down (in reverse resolution order) on exit.
     - Depends[PotatoSubclass] resolves to the app-level potato singleton.
+    - ``overrides`` maps a dependency callable to a replacement (used by tests).
     - Use as an async context manager to guarantee teardown.
 
     Example:
@@ -168,8 +169,13 @@ class DependencyResolver:
             await my_task_fn(**real_args, **injected)
     """
 
-    def __init__(self, potato: Any = None) -> None:
+    def __init__(
+        self,
+        potato: Any = None,
+        overrides: dict[Callable[..., Any], Callable[..., Any]] | None = None,
+    ) -> None:
         self._potato = potato
+        self._overrides = overrides or {}
         self._cache: dict[Callable, Any] = {}
         # (kind, generator) pairs in resolution order; kind is "sync" or "async"
         self._generators: list[tuple[str, Generator | AsyncGenerator]] = []
@@ -232,8 +238,9 @@ class DependencyResolver:
         if dep in self._cache:
             return self._cache[dep]
 
-        sub_kwargs = await self.resolve_params(dep)
-        raw = dep(**sub_kwargs)
+        provider = self._overrides.get(dep, dep)
+        sub_kwargs = await self.resolve_params(provider)
+        raw = provider(**sub_kwargs)
 
         match raw:
             case AsyncGenerator():

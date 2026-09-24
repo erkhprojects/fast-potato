@@ -72,8 +72,7 @@ async def test_publish_and_consume_single_message(
     msg = TaskMessage(
         task_name="tests.sample_task",
         queue=queue_name,
-        args=[42, "spud"],
-        kwargs={"active": True},
+        payload={"number": 42, "name": "spud", "active": True},
     )
 
     await broker.publish(msg)
@@ -88,8 +87,7 @@ async def test_publish_and_consume_single_message(
     assert received.id == msg.id
     assert received.task_name == "tests.sample_task"
     assert received.queue == queue_name
-    assert received.args == [42, "spud"]
-    assert received.kwargs == {"active": True}
+    assert received.payload == {"number": 42, "name": "spud", "active": True}
 
 
 # ------------------------------------------------------------------------------
@@ -104,8 +102,8 @@ async def test_publish_and_consume_multiple_queues(
     q_a = f"int_multi_a_{uuid.uuid4().hex[:8]}"
     q_b = f"int_multi_b_{uuid.uuid4().hex[:8]}"
 
-    msg_a = TaskMessage(task_name="task.a", queue=q_a, args=["alpha"])
-    msg_b = TaskMessage(task_name="task.b", queue=q_b, args=["bravo"])
+    msg_a = TaskMessage(task_name="task.a", queue=q_a, payload={"value": "alpha"})
+    msg_b = TaskMessage(task_name="task.b", queue=q_b, payload={"value": "bravo"})
 
     await broker.publish(msg_a)
     await broker.publish(msg_b)
@@ -138,7 +136,7 @@ async def test_delayed_eta_delivery(broker: AbstractBroker) -> None:
     msg = TaskMessage(
         task_name="task.delayed",
         queue=queue_name,
-        args=["delayed_payload"],
+        payload={"value": "delayed_payload"},
         eta=eta,
     )
 
@@ -163,7 +161,7 @@ async def test_delayed_eta_delivery(broker: AbstractBroker) -> None:
         _wait_for_delayed(), timeout=delay_seconds + 5.0
     )
     assert delayed_received.id == msg.id
-    assert delayed_received.args == ["delayed_payload"]
+    assert delayed_received.payload == {"value": "delayed_payload"}
 
 
 # ------------------------------------------------------------------------------
@@ -241,6 +239,10 @@ async def get_db_session() -> AsyncIterator[str]:
     yield "session:db_primary_active"
 
 
+class Transaction(BaseModel):
+    tx_id: int
+
+
 async def test_end_to_end_annotated_dependencies(broker: AbstractBroker) -> None:
     """
     Test full end-to-end task execution using Annotated[T, Depends(...)] and
@@ -254,11 +256,11 @@ async def test_end_to_end_annotated_dependencies(broker: AbstractBroker) -> None
 
     @app.task(queue=queue_name)
     async def process_transaction(
-        tx_id: int,
+        tx: Transaction,
         session: Annotated[str, Depends(get_db_session)],
         config: Annotated[CustomPotato, Depends],
     ) -> None:
-        results["tx_id"] = tx_id
+        results["tx_id"] = tx.tx_id
         results["session"] = session
         results["tax_rate"] = config.tax_rate
         execution_event.set()
@@ -268,7 +270,7 @@ async def test_end_to_end_annotated_dependencies(broker: AbstractBroker) -> None
 
     try:
         await asyncio.sleep(0.3)
-        await process_transaction.send(tx_id=987)
+        await process_transaction.send(Transaction(tx_id=987))
 
         await asyncio.wait_for(execution_event.wait(), timeout=6.0)
 

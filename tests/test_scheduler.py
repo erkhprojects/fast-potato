@@ -3,8 +3,15 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime
 
+from pydantic import BaseModel
+
 from fast_potato import FastPotato, Schedule, Scheduler
 from fast_potato.brokers import MemoryBroker
+
+
+class ReportInput(BaseModel):
+    report_id: int
+    format: str = "html"
 
 
 def make_app_with_schedules(
@@ -54,20 +61,19 @@ class TestSchedulerTick:
         assert len(msgs2) == 0
         assert len(broker.published) == 1
 
-    async def test_scheduler_passes_args_kwargs_and_queue(self):
+    async def test_scheduler_passes_payload_and_queue(self):
         broker = MemoryBroker()
         app = FastPotato("test_app", broker=broker)
 
         @app.task
-        async def send_report(report_id: int, format: str = "html") -> None:
+        async def send_report(data: ReportInput) -> None:
             pass
 
         sched = Schedule(
             task=send_report.name,
             cron="* * * * *",
             queue="reports",
-            args=[123],
-            kwargs={"format": "pdf"},
+            payload=ReportInput(report_id=123, format="pdf"),
         )
         app.schedules = [sched]
 
@@ -79,8 +85,7 @@ class TestSchedulerTick:
 
         assert len(msgs) == 1
         assert msgs[0].queue == "reports"
-        assert msgs[0].args == [123]
-        assert msgs[0].kwargs == {"format": "pdf"}
+        assert msgs[0].payload == {"report_id": 123, "format": "pdf"}
 
     async def test_scheduler_run_and_stop(self):
         app, broker = make_app_with_schedules([])

@@ -48,7 +48,7 @@ services-up = "docker compose -p fast_potato -f tests/integration/docker-compose
 services-down = "docker compose -p fast_potato -f tests/integration/docker-compose.yml down"
 lint = "ruff check ."
 format = "ruff format ."
-typecheck = "mypy fast_potato"
+typecheck = "mypy"
 
 [tool.ruff]
 target-version = "py314"
@@ -72,12 +72,18 @@ ignore = [
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"typing.TYPE_CHECKING".msg = "Don't hide import cycles behind TYPE_CHECKING. Structure dependencies to point one way."
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.mypy]
 python_version = "3.14"
+# Checked by a bare `mypy` / `poe typecheck`. Examples are documentation, so
+# they must type-check too; tests/typecheck is the send() typing contract.
+files = ["fast_potato", "examples", "tests/typecheck"]
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

@@ -1,0 +1,397 @@
+# FastPotato
+
+> Async-first, type-safe distributed task queue for modern Python (3.14+). Built with native asyncio, Pydantic v2, and FastAPI-style dependency injection.
+
+FastPotato is a lightweight, high-performance alternative to Celery and Dramatiq designed specifically for modern async Python applications. Every task takes (at most) one Pydantic model as its input, so serialization is pure Pydantic, `send()` calls are fully checked by mypy/pyright, and everything else a task needs is injected with hierarchical dependency injection.
+
+## Quickstart
+
+```python
+import asyncio
+from pydantic import BaseModel
+from fast_potato import FastPotato
+from fast_potato.brokers import MemoryBroker
+
+# 1. Initialize app and broker
+broker = MemoryBroker()
+app = FastPotato("my_app", broker=broker)
+
+# 2. Define the task's input model
+class User(BaseModel):
+    name: str
+    email: str
+
+# 3. Register tasks
+@app.task
+async def send_welcome_email(user: User) -> str:
+    print(f"Sending email to {user.email}")
+    return f"Sent to {user.email}"
+
+# 4. Dispatch tasks
+async def main() -> None:
+    # Fire immediately to the broker
+    msg = await send_welcome_email.send(User(name="Alice", email="alice@example.com"))
+    print("Enqueued message:", msg.id, msg.payload)
+
+    # Fire with delivery options (delayed execution or custom queue)
+    await send_welcome_email.send(User(name="Bob", email="bob@example.com"), delay=60)
+
+    # Direct in-process execution (no broker, no dependency injection)
+    result = await send_welcome_email(User(name="Charlie", email="charlie@example.com"))
+    print("Direct result:", result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Core API & Patterns
+
+### 1. App Initialization & Brokers
+
+Apps are explicit instances (not global singletons):
+
+```python
+from fast_potato import FastPotato
+from fast_potato.brokers import MemoryBroker, RedisBroker, RabbitMQBroker
+
+# In-memory broker (for testing and local dev)
+app = FastPotato("app_name", broker=MemoryBroker())
+
+# Redis broker
+app = FastPotato("app_name", broker=RedisBroker("redis://localhost:6379/0"))
+
+# RabbitMQ broker
+app = FastPotato("app_name", broker=RabbitMQBroker("amqp://guest:guest@localhost:5672/"))
+```
+
+`FastPotato(name, broker, potato=None, schedules=None, task_modules=None)`. Tasks are registered as `"<app_name>.<function_qualname>"` (e.g. `"my_app.send_welcome_email"`).
+
+### 2. Registering Tasks
+
+Tasks wrap `async def` functions using `@app.task`. The signature rules are strict and checked at registration (violations raise `TypeError`):
+
+- The **first** parameter may be the task's **input**: a Pydantic `BaseModel` subclass. It is optional (a task can take no input), must be positional, must have no default, and must not be a `Potato` subclass (potatoes are injected, not sent).
+- **Every other parameter must be a dependency**: `Depends(...)`, `Annotated[T, Depends(...)]`, or `Depends[YourPotato]`.
+- No primitive data parameters (`x: int`), no `*args` / `**kwargs`. Put task data on the input model.
+
+```python
+from pydantic import BaseModel
+
+class AddInput(BaseModel):
+    x: int
+    y: int
+
+# Bare decorator (default queue: "default")
+@app.task
+async def add(numbers: AddInput) -> int:
+    return numbers.x + numbers.y
+
+# Parameterized decorator for a specific queue
+class Payment(BaseModel):
+    amount: float
+
+@app.task(queue="high_priority")
+async def process_payment(payment: Payment) -> bool:
+    return True
+
+# No input at all
+@app.task
+async def sync_cache() -> None:
+    ...
+```
+
+*Note: in modules using `from __future__ import annotations`, define input models and dependency types at module level (before the task), so the annotations can be evaluated at registration time.*
+
+### 3. Dispatching Tasks
+
+- **`await task.send(data, delay=..., eta=..., queue=...)`**: For tasks with an input model. `data` must be **exactly** an instance of the input model (not a subclass, not a dict, not keyword arguments).
+- **`await task.send(delay=..., eta=..., queue=...)`**: For tasks without input.
+  - `delay`: Number of seconds to delay execution (float/int).
+  - `eta`: Exact `datetime` when the task should run (naive datetimes are treated as UTC). Pass either `delay` or `eta`, not both.
+  - `queue`: Override the destination queue name for this dispatch.
+- **`await task(data, ...)`**: Direct in-process call of the underlying coroutine. Bypasses the broker, serialization and dependency injection (pass any dependencies yourself). For a realistic in-process run, use `TestApp.call()` (see Testing).
+
+`send()` is overloaded on the task's input type (`Task[InputT, R]`), so mypy/pyright check every call:
+
+```python
+await add.send(AddInput(x=1, y=2))   # OK
+await add.send()                     # type error: missing "data"
+await add.send(Payment(amount=1.0))  # type error: expected "AddInput"
+await sync_cache.send(delay=5)       # OK
+await sync_cache.send(AddInput(x=1, y=2))  # type error: task takes no input
+```
+
+`send()` returns the published `TaskMessage`. `task.build_message(data, ...)` builds and validates the same message without publishing it.
+
+#### Wire format (`TaskMessage`)
+
+```python
+class TaskMessage(BaseModel):
+    id: str               # uuid4
+    task_name: str        # "my_app.add"
+    queue: str = "default"
+    payload: dict | None  # input.model_dump(mode="json"), or None for tasks without input
+    eta: datetime | None  # always timezone-aware (UTC) when set
+```
+
+On the worker, `payload` is validated back into the input model with `InputModel.model_validate(payload)`, then the task is called with the model plus its resolved dependencies.
+
+### 4. Dependency Injection (DI)
+
+FastPotato supports hierarchical, auto-closing dependency injection. Dependencies are resolved on the worker, once per task execution (the same callable is resolved once and shared).
+
+#### Task-Level Callable Dependencies (`Depends`)
+Dependencies can be sync functions, async functions, classes, or generator functions (`yield` for resource cleanup). Dependencies can themselves declare dependencies:
+
+```python
+from typing import Annotated
+from fast_potato import Depends
+
+async def get_db():
+    db = await Database.connect()
+    try:
+        yield db
+    finally:
+        await db.close()
+
+class FetchUser(BaseModel):
+    user_id: int
+
+# Annotated syntax (recommended; plays well with type checkers):
+@app.task
+async def fetch_user(req: FetchUser, db: Annotated[Database, Depends(get_db)]):
+    return await db.users.get(req.user_id)
+
+# Default-value syntax:
+@app.task
+async def fetch_user_v2(req: FetchUser, db: Database = Depends(get_db)):
+    return await db.users.get(req.user_id)
+
+# Bare Depends(): the callable is inferred from the annotation (usually a class)
+@app.task
+async def report(svc: Annotated[ReportService, Depends()]) -> None: ...
+```
+
+*Rule: Never pass dependencies to `task.send(...)`. Callers only pass the input model (e.g. `await fetch_user.send(FetchUser(user_id=1))`). Dependencies are resolved automatically by the worker.*
+
+#### App-Level Singleton Dependencies (`Potato`)
+Define shared configuration or resources that initialize once on the app and are injected across tasks. `Potato` is a frozen Pydantic model:
+
+```python
+from typing import Annotated
+from fast_potato import FastPotato, Potato, Depends
+
+class AppConfig(Potato):
+    db_url: str
+    api_key: str
+
+config = AppConfig(db_url="postgresql://...", api_key="secret")
+app = FastPotato("my_app", broker=broker, potato=config)
+
+@app.task
+async def sync_data(config: AppConfig = Depends[AppConfig]):
+    print("Using DB:", config.db_url)
+
+# Equivalent Annotated forms:
+#   config: Annotated[AppConfig, Depends]
+#   config: Annotated[AppConfig, Depends()]
+```
+
+A task whose only parameters are potatoes / dependencies takes no input: `await sync_data.send()`.
+
+#### Dependency Overrides
+`app.dependency_overrides` maps a `Depends()` callable to a replacement, FastAPI-style. Every `Depends(original)` anywhere in the dependency graph resolves with the replacement instead:
+
+```python
+app.dependency_overrides[get_db] = get_fake_db
+```
+
+In tests prefer `TestApp.override(...)`, which restores the overrides on exit.
+
+### 5. Serialization & Custom Types
+
+Serialization is entirely Pydantic's: the input model is dumped with `model_dump(mode="json")` and restored with `model_validate(...)`. Anything Pydantic can round-trip through JSON works as a field: primitives, nested models, lists, dicts, `datetime`, `UUID`, `Decimal`, enums, unions, and so on. There is no FastPotato-specific type registry.
+
+#### Custom (non-Pydantic) types
+Use Pydantic's own mechanisms. Either annotate the type with a serializer and validator:
+
+```python
+from typing import Annotated
+from pydantic import BaseModel, PlainSerializer, PlainValidator
+
+class Point:
+    def __init__(self, x: float, y: float) -> None:
+        self.x, self.y = x, y
+
+def parse_point(v: object) -> Point:
+    if isinstance(v, Point):
+        return v
+    x, y = str(v).split(",")
+    return Point(float(x), float(y))
+
+PointField = Annotated[
+    Point,
+    PlainValidator(parse_point),
+    PlainSerializer(lambda p: f"{p.x},{p.y}", return_type=str),
+]
+
+class DrawLine(BaseModel):
+    start: PointField
+    end: PointField
+```
+
+...or define `__get_pydantic_core_schema__` on the class itself. (`BeforeValidator` / `AfterValidator` also work when the underlying type already has a Pydantic schema.) If a field cannot be serialized, `send()` raises Pydantic's `PydanticSerializationError`.
+
+#### Polymorphic inputs (discriminated unions)
+To send one of several shapes, put a discriminated union on the input model:
+
+```python
+from typing import Literal
+from pydantic import BaseModel, Field
+
+class Email(BaseModel):
+    kind: Literal["email"] = "email"
+    address: str
+
+class Sms(BaseModel):
+    kind: Literal["sms"] = "sms"
+    phone: str
+
+class Notify(BaseModel):
+    channel: Email | Sms = Field(discriminator="kind")
+
+@app.task
+async def notify(req: Notify) -> None: ...
+
+await notify.send(Notify(channel=Sms(phone="+123")))
+```
+
+### 6. Scheduled Tasks (Cron / Periodic Tasks)
+
+`Schedule(task, cron, queue=None, payload=None)`. `payload` is the input model instance sent on every trigger (leave it `None` for tasks without input); it must be exactly the task's input model type, validated when the schedule fires. `queue=None` means the task's own queue.
+
+```python
+from pydantic import BaseModel
+from fast_potato import FastPotato, Schedule, crontab
+
+class DigestOptions(BaseModel):
+    include_analytics: bool = False
+
+app = FastPotato(
+    "my_app",
+    broker=broker,
+    schedules=[
+        Schedule(task="my_app.nightly_cleanup", cron="0 0 * * *"),
+        Schedule(task="my_app.health_check", cron="*/5 * * * *", queue="monitoring"),
+        Schedule(
+            task="my_app.send_digest",
+            cron=crontab(minute="0", hour="9", day_of_week="1-5"),
+            payload=DigestOptions(include_analytics=True),
+        ),
+    ],
+)
+
+@app.task
+async def send_digest(options: DigestOptions) -> None: ...
+```
+
+`Scheduler(app).tick(now=...)` evaluates and dispatches due schedules once (handy in tests); `Scheduler(app).run()` loops until `stop()`.
+
+### 7. CLI & Running in Production
+
+The `fast-potato` CLI starts a supervisor that spawns worker processes, plus exactly one scheduler process when the app has schedules:
+
+```bash
+# -A app import path, -w worker processes, -c concurrent tasks per process,
+# -q comma-separated queues (default: "default")
+fast-potato -A my_project.app:app -w 4 -c 10 -q default,high_priority --log-level INFO
+```
+
+Programmatically: `await Worker(app, queues=["default"], concurrency=10).run()` and `worker.stop()`.
+
+### 8. Testing Recipes (Unit & Integration)
+
+`fast_potato.testing.TestApp` puts an app into test mode: it swaps in an in-memory broker (no Docker or external services), lets you override dependencies and the potato, and restores everything on exit. Tasks run through the same code path as the real `Worker`, including a JSON round-trip of the message, so serialization bugs surface in tests.
+
+`TestApp(app, eager=False, potato=None, raise_errors=True)`:
+- **Drain mode (default)**: `send()` queues; `await t.drain()` runs queued messages in FIFO order, including tasks enqueued by other tasks. Options: `queues=[...]`, `run_delayed=True`, `max_tasks=1000`. Returns the list of `TaskRun(msg, result, error)`.
+- **Eager mode** (`eager=True`): every `send()` runs the task before `send()` returns.
+- `potato=...`: replace `app.potato` for the test.
+- `raise_errors=True`: a failing task raises into the test; with `False`, failures are collected in `t.errors`.
+
+Helpers:
+- `t.override(dep, replacement)`: set `app.dependency_overrides[dep]` until exit.
+- `await t.call(task, data)` / `await t.call(task)`: run a task now, with JSON round-trip and dependency injection, returning its result.
+- `t.assert_sent(task, data)` / `t.assert_sent(task)`, `t.assert_not_sent(task)`.
+- `t.sent(task)`: decoded input models of every message sent for `task`, in order.
+- `t.messages` (all sent `TaskMessage`s), `t.pending` (queued, not yet run), `t.runs`, `t.errors`.
+
+```python
+from pydantic import BaseModel
+from fast_potato import Depends, FastPotato
+from fast_potato.brokers import MemoryBroker
+from fast_potato.testing import TestApp
+
+app = FastPotato("shop", broker=MemoryBroker())
+
+class Order(BaseModel):
+    order_id: int
+
+class Receipt(BaseModel):
+    order_id: int
+
+def get_mailer() -> Mailer: ...
+def get_fake_mailer() -> Mailer: ...
+
+@app.task
+async def checkout(order: Order) -> None:
+    await send_receipt.send(Receipt(order_id=order.order_id))
+
+@app.task
+async def send_receipt(receipt: Receipt, mailer: Mailer = Depends(get_mailer)) -> None: ...
+
+async def test_checkout_sends_receipt() -> None:
+    with TestApp(app) as t:
+        t.override(get_mailer, get_fake_mailer)
+        await checkout.send(Order(order_id=1))
+        await t.drain()                       # runs checkout, then send_receipt
+        t.assert_sent(send_receipt, Receipt(order_id=1))
+        assert t.pending == []
+
+async def test_checkout_eager() -> None:
+    with TestApp(app, eager=True) as t:
+        await checkout.send(Order(order_id=2))   # runs checkout and send_receipt now
+        assert len(t.runs) == 2
+```
+
+---
+
+## Anti-Patterns & Common Gotchas for AI Models
+
+1. **Do NOT use Celery idioms**:
+   - ❌ `task.delay(...)` or `task.apply_async(...)`
+   - ✅ `task.send(data)` or `task.send(data, delay=...)`
+   - ❌ `@shared_task` (FastPotato tasks must be bound to an explicit `app`: `@app.task`)
+   - ❌ `celery.current_app` (FastPotato has no global singleton app)
+
+2. **Do NOT send loose arguments**:
+   - ❌ `await add.send(1, 2)` / `await add.send(x=1, y=2)` / `await add.send({"x": 1, "y": 2})`
+   - ✅ `await add.send(AddInput(x=1, y=2))` (exactly one instance of the input model).
+
+3. **Do NOT declare primitive or untyped task parameters**:
+   - ❌ `async def task(x: int, y: int):` / `async def task(x, y):` / `async def task(*args, **kwargs):` -> Raises `TypeError` during task registration!
+   - ✅ `async def task(data: MyInput, db: Annotated[DB, Depends(get_db)]):` (one input model first; everything else is a dependency).
+
+4. **Do NOT pass dependency parameters to `send()`**:
+   - ❌ `await my_task.send(MyInput(...), db=my_db)`
+   - ✅ `await my_task.send(MyInput(...))` (the worker injects `db`). To replace a dependency in tests, use `TestApp.override()` or `app.dependency_overrides`.
+
+5. **Do NOT make a `Potato` the task input**:
+   - ❌ `async def task(config: AppConfig):` where `AppConfig` is a `Potato` subclass without `Depends`
+   - ✅ `async def task(config: AppConfig = Depends[AppConfig]):`
+
+6. **Do NOT send a subclass or a look-alike model**: `send()` requires `type(data) is InputModel`; a subclass's extra fields would otherwise be silently dropped.
+
+7. **Do NOT look for a FastPotato serializer registry**: there are no type strategies. Make custom types JSON-round-trippable with Pydantic (`Annotated[T, PlainSerializer(...), PlainValidator(...)]` or `__get_pydantic_core_schema__`), and use `Field(discriminator=...)` for unions.
+
+8. **Do NOT use `Schedule(args=..., kwargs=...)`**: use `Schedule(..., payload=InputModel(...))`.

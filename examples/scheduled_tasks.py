@@ -3,7 +3,8 @@ Fast-Potato Periodic & Scheduled Tasks Example.
 
 Demonstrates:
 1. Defining schedules using cron expressions and the `crontab()` helper.
-2. Passing schedules to FastPotato app initialization.
+2. Passing schedules to FastPotato app initialization, including a schedule
+   that sends an input model (`payload=`) on every trigger.
 3. Using the `Scheduler` to evaluate and dispatch due tasks.
 4. Using the `Worker` to consume and process scheduled task runs.
 
@@ -16,10 +17,19 @@ from __future__ import annotations
 import asyncio
 from datetime import UTC, datetime, timedelta
 
+from pydantic import BaseModel
+
 from fast_potato import FastPotato, Schedule, Scheduler, Worker, crontab
 from fast_potato.brokers import MemoryBroker
 
 broker = MemoryBroker()
+
+
+# Input model for a scheduled task. It is defined before the app because the
+# schedule below carries an instance of it as its payload.
+class DigestOptions(BaseModel):
+    include_analytics: bool = False
+
 
 # Initialize the application with cron schedules
 app = FastPotato(
@@ -32,12 +42,12 @@ app = FastPotato(
             cron="0 * * * *",
             queue="reports",
         ),
-        # Runs every weekday at 09:00 AM with arguments
+        # Runs every weekday at 09:00 AM, sending this input on every trigger
         Schedule(
             task="cron_app.send_daily_digest",
             cron=crontab(minute="0", hour="9", day_of_week="1-5"),
             queue="emails",
-            kwargs={"include_analytics": True},
+            payload=DigestOptions(include_analytics=True),
         ),
         # Runs every minute
         Schedule(
@@ -57,8 +67,8 @@ async def generate_hourly_report() -> None:
 
 
 @app.task(queue="emails")
-async def send_daily_digest(include_analytics: bool = False) -> None:
-    print(f"[TASK] Sending daily digest (analytics={include_analytics})...")
+async def send_daily_digest(options: DigestOptions) -> None:
+    print(f"[TASK] Sending daily digest (analytics={options.include_analytics})...")
 
 
 @app.task
@@ -80,7 +90,8 @@ async def main() -> None:
     print(f"Scheduler initialized at: {base_time.isoformat()}")
 
     # 1. Advance time to 9:00 AM (Monday)
-    # At 9:00 AM, both the heartbeat (* * * * *) and daily digest (9:00 AM weekdays) are due
+    # At 9:00 AM, the hourly report (0 * * * *), heartbeat (* * * * *) and
+    # daily digest (9:00 AM weekdays) are all due
     t1 = base_time + timedelta(minutes=1)
     print(f"\n--- Advancing time to {t1.strftime('%H:%M:%S')} ---")
     dispatched = await scheduler.tick(now=t1)

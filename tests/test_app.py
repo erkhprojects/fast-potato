@@ -1,18 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from fast_potato import (
-    BaseTypeStrategy,
-    DependencyResolver,
-    Depends,
-    FastPotato,
-    Potato,
-    Worker,
-)
+from fast_potato import DependencyResolver, Depends, FastPotato, Potato
 from fast_potato.brokers import MemoryBroker
 from fast_potato.dependency import PotatoDepends
 from tests._fixtures import shared_app
@@ -37,14 +28,25 @@ class FullConfig(Potato):
     debug: bool = False
 
 
+# --- Sample input models ---
+
+
+class OrderInput(BaseModel):
+    order_id: int
+
+
+class NumberInput(BaseModel):
+    x: int
+
+
 # --- Sample task functions ---
 
 
 async def task_with_config(
-    order_id: int,
+    data: OrderInput,
     config: AppConfig = Depends[AppConfig],
 ) -> str:
-    return f"{order_id}:{config.env}"
+    return f"{data.order_id}:{config.env}"
 
 
 async def task_with_full_config(
@@ -138,7 +140,7 @@ class TestFastPotatoInit:
 
         task = app.task(my_task)
         assert "config" in task.dependency_params
-        assert "config" not in task._sendable_params
+        assert task.input_model is None
 
 
 # --- FastPotato task registration ---
@@ -149,14 +151,15 @@ class TestFastPotatoTaskRegistration:
         app = FastPotato("test", broker=MemoryBroker())
 
         @app.task
-        async def sample_task(x: int) -> int:
-            return x * 2
+        async def sample_task(data: NumberInput) -> int:
+            return data.x * 2
 
         assert (
             "test.TestFastPotatoTaskRegistration.test_bare_task_decorator.<locals>.sample_task"
             in app._registry
         )
         assert app.get_task(sample_task.name) is sample_task
+        assert sample_task.input_model is NumberInput
 
     def test_factory_task_decorator_with_queue(self):
         app = FastPotato("test", broker=MemoryBroker())
@@ -223,32 +226,32 @@ class TestPotatoResolution:
     async def test_resolves_potato_dep(self):
         config = AppConfig(env="staging")
         async with DependencyResolver(potato=config) as r:
-            injected = await r.resolve(task_with_config)
+            injected = await r.resolve_params(task_with_config)
         assert injected["config"] is config
 
     async def test_correct_value_from_potato(self):
         config = AppConfig(env="production", debug=True)
         async with DependencyResolver(potato=config) as r:
-            injected = await r.resolve(task_with_config)
+            injected = await r.resolve_params(task_with_config)
         assert injected["config"].env == "production"
         assert injected["config"].debug is True
 
     async def test_non_dep_param_not_injected(self):
         config = AppConfig(env="test")
         async with DependencyResolver(potato=config) as r:
-            injected = await r.resolve(task_with_config)
-        assert "order_id" not in injected
+            injected = await r.resolve_params(task_with_config)
+        assert "data" not in injected
 
     async def test_no_potato_raises_runtime_error(self):
         async with DependencyResolver(potato=None) as r:
             with pytest.raises(RuntimeError, match="no potato was passed"):
-                await r.resolve(task_with_config)
+                await r.resolve_params(task_with_config)
 
     async def test_wrong_potato_type_raises_type_error(self):
         wrong = DatabaseConfig(db_url="postgresql://localhost/db")
         async with DependencyResolver(potato=wrong) as r:
             with pytest.raises(TypeError, match="AppConfig"):
-                await r.resolve(task_with_config)
+                await r.resolve_params(task_with_config)
 
     async def test_potato_dep_mixed_with_callable_dep(self):
         async def get_multiplier() -> int:
@@ -261,78 +264,10 @@ class TestPotatoResolution:
 
         config = AppConfig(env="test")
         async with DependencyResolver(potato=config) as r:
-            injected = await r.resolve(task_fn)
+            injected = await r.resolve_params(task_fn)
 
         assert injected["config"].env == "test"
         assert injected["multiplier"] == 10
-
-
-# --- App-level custom type strategies ---
-
-
-class Color:
-    def __init__(self, r: int, g: int, b: int) -> None:
-        self.r = r
-        self.g = g
-        self.b = b
-
-
-class ColorStrategy(BaseTypeStrategy):
-    def can_handle(self, annotation: Any) -> bool:
-        return annotation is Color
-
-    def deserialize(self, val: Any, annotation: Any, dispatcher: Any) -> Any:
-        if isinstance(val, dict) and val.get("__color__"):
-            return Color(val["r"], val["g"], val["b"])
-        return val
-
-    def can_serialize(self, val: Any) -> bool:
-        return isinstance(val, Color)
-
-    def serialize(self, val: Any, dispatcher: Any) -> Any:
-        return {"__color__": True, "r": val.r, "g": val.g, "b": val.b}
-
-
-class TestAppTypeStrategy:
-    async def test_app_custom_strategy_worker_execution(self):
-        broker = MemoryBroker()
-        custom_app = FastPotato(
-            "color_app",
-            broker=broker,
-            type_strategies=[ColorStrategy()],
-        )
-
-        received_color: list[Color] = []
-
-        @custom_app.task
-        async def process_color(c: Color) -> str:
-            received_color.append(c)
-            return f"rgb({c.r},{c.g},{c.b})"
-
-        msg = await process_color.send(Color(255, 128, 0))
-        assert msg.args[0] == {"__color__": True, "r": 255, "g": 128, "b": 0}
-
-        worker = Worker(custom_app)
-        result = await worker.execute(msg)
-        assert result == "rgb(255,128,0)"
-        assert len(received_color) == 1
-        assert isinstance(received_color[0], Color)
-        assert received_color[0].r == 255
-
-    def test_app_custom_strategy_prioritization(self):
-        strat = ColorStrategy()
-        app_default = FastPotato("app1", broker=MemoryBroker(), type_strategies=[strat])
-        # Default: custom strategies are appended after built-ins
-        assert app_default.type_dispatcher.strategies[-1] is strat
-
-        app_prioritized = FastPotato(
-            "app2",
-            broker=MemoryBroker(),
-            type_strategies=[strat],
-            prioritize_custom_strategies=True,
-        )
-        # Prioritized: custom strategies are prepended before built-ins
-        assert app_prioritized.type_dispatcher.strategies[0] is strat
 
 
 # --- Import convention enforcement ---

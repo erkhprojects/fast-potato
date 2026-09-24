@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from fast_potato import FastPotato, Schedule
 from fast_potato.brokers import MemoryBroker
+
+
+class DigestInput(BaseModel):
+    full: bool
 
 
 def make_app(**kwargs) -> FastPotato:
@@ -36,22 +40,16 @@ class TestScheduleValidation:
     def test_defaults(self):
         s = Schedule(task="my_app.task", cron="0 9 * * 1")
         assert s.queue is None
-        assert s.args == []
-        assert s.kwargs == {}
+        assert s.payload is None
 
     def test_custom_queue(self):
         s = Schedule(task="my_app.task", cron="0 * * * *", queue="reports")
         assert s.queue == "reports"
 
-    def test_args_and_kwargs_stored(self):
-        s = Schedule(
-            task="my_app.task",
-            cron="0 * * * *",
-            args=[1, 2],
-            kwargs={"full": True},
-        )
-        assert s.args == [1, 2]
-        assert s.kwargs == {"full": True}
+    def test_payload_stored(self):
+        payload = DigestInput(full=True)
+        s = Schedule(task="my_app.task", cron="0 * * * *", payload=payload)
+        assert s.payload is payload
 
 
 class TestFastPotatoSchedules:
@@ -91,9 +89,24 @@ class TestFastPotatoSchedules:
         app = make_app(schedules=schedules)
         assert app.schedules[0].queue == "reports"
 
-    def test_schedule_with_static_kwargs(self):
+    def test_schedule_with_static_payload(self):
         schedules = [
-            Schedule(task="my_app.digest", cron="0 9 * * 1", kwargs={"full": True})
+            Schedule(
+                task="my_app.digest", cron="0 9 * * 1", payload=DigestInput(full=True)
+            )
         ]
         app = make_app(schedules=schedules)
-        assert app.schedules[0].kwargs == {"full": True}
+        assert app.schedules[0].payload == DigestInput(full=True)
+
+
+class TestSchedulePayloadModel:
+    def test_payload_keeps_concrete_model_and_dumps_its_fields(self):
+        s = Schedule(task="a", cron="* * * * *", payload=DigestInput(full=True))
+        assert type(s.payload) is DigestInput
+        assert s.model_dump()["payload"] == {"full": True}
+
+    def test_raw_dict_payload_rejected(self):
+        with pytest.raises(ValidationError):
+            Schedule.model_validate(
+                {"task": "a", "cron": "* * * * *", "payload": {"full": True}}
+            )

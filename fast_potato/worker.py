@@ -7,19 +7,57 @@ import os
 import signal
 import sys
 from contextlib import aclosing
-from typing import Any
+from typing import Any, cast
+
+from pydantic import BaseModel
 
 from fast_potato import app as app_module
 from fast_potato import dependency, message
+from fast_potato import task as task_module
 
 logger = logging.getLogger("fast_potato.worker")
+
+
+def decode_input[InputT: BaseModel | None](
+    task: task_module.Task[InputT, Any], msg: message.TaskMessage
+) -> InputT:
+    """Validate a message's payload into the task's input model (None if it takes none)."""
+    if task.input_model is None:
+        if msg.payload is not None:
+            raise TypeError(
+                f"Task '{task.name}' takes no input, but message {msg.id} has a payload."
+            )
+        data: BaseModel | None = None
+    else:
+        data = task.input_model.model_validate(msg.payload)
+    # input_model is the runtime counterpart of InputT (set from the signature).
+    return cast(InputT, data)
+
+
+async def execute(app: app_module.FastPotato, msg: message.TaskMessage) -> Any:
+    """
+    Execute a single task message against an app and return the task's result.
+
+    This is the one code path that runs tasks: the Worker uses it, and so do
+    the eager and drain helpers in fast_potato.testing.
+    """
+    task = app.get_task(msg.task_name)
+    data = decode_input(task, msg)
+
+    async with dependency.DependencyResolver(
+        potato=app.potato, overrides=app.dependency_overrides
+    ) as resolver:
+        injected = await resolver.resolve_params(task.fn)
+        if task.input_model is None:
+            return await task.fn(**injected)
+        return await task.fn(data, **injected)
 
 
 class Worker:
     """
     Async task execution worker for FastPotato.
 
-    Consumes TaskMessage objects from broker queues, deserializes Pydantic models,
+    Consumes TaskMessage objects from broker queues, validates their input models,
     resolves dependency injection via DependencyResolver, and executes tasks
     under bounded concurrency enforced by an asyncio.Semaphore.
     """
@@ -54,28 +92,7 @@ class Worker:
 
         Raises exceptions directly if task lookup, deserialization, or execution fails.
         """
-        task = self.app.get_task(msg.task_name)
-        sig = task.sig
-        hints = dependency.resolved_hints(task.fn)
-        # Bind raw args and kwargs to signature
-        bound = sig.bind_partial(*msg.args, **msg.kwargs)
-
-        # Deserialize arguments matching parameters
-        for name, val in list(bound.arguments.items()):
-            if name not in task.dependency_params:
-                annotation = hints.get(name, sig.parameters[name].annotation)
-                bound.arguments[name] = self.app.type_dispatcher.deserialize(
-                    val, annotation
-                )
-
-        # Resolve dependencies (Depends / Potato)
-        async with dependency.DependencyResolver(potato=self.app.potato) as resolver:
-            injected = await resolver.resolve_params(task.fn)
-            for dep_name, dep_val in injected.items():
-                bound.arguments[dep_name] = dep_val
-
-            bound.apply_defaults()
-            return await task.fn(*bound.args, **bound.kwargs)
+        return await execute(self.app, msg)
 
     async def _safe_execute(self, msg: message.TaskMessage) -> Any:
         """
@@ -200,7 +217,9 @@ def import_app(app_str: str) -> app_module.FastPotato:
             app_obj = module.app
         else:
             candidates = [
-                v for v in module.__dict__.values() if isinstance(v, app_module.FastPotato)
+                v
+                for v in module.__dict__.values()
+                if isinstance(v, app_module.FastPotato)
             ]
             if len(candidates) == 1:
                 app_obj = candidates[0]

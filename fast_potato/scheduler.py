@@ -48,11 +48,13 @@ class Scheduler:
             if current_time >= entry.next_run:
                 try:
                     task = self.app.get_task(entry.schedule.task)
-                    msg = await task.send(
-                        *entry.schedule.args,
-                        queue=entry.schedule.queue,
-                        **entry.schedule.kwargs,
-                    )
+                    # The task is looked up by name, so its input type is only
+                    # known at runtime; send() validates the payload against it.
+                    payload = entry.schedule.payload
+                    if payload is None:
+                        msg = await task.send(queue=entry.schedule.queue)
+                    else:
+                        msg = await task.send(payload, queue=entry.schedule.queue)
                     dispatched.append(msg)
                     logger.info(
                         "Scheduler dispatched task '%s' (message ID: %s)",

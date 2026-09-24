@@ -5,6 +5,8 @@ from collections.abc import AsyncGenerator, Generator
 from pathlib import Path
 from typing import Annotated
 
+from pydantic import BaseModel
+
 from fast_potato import Depends, FastPotato, Potato
 from fast_potato.brokers.rabbitmq import RabbitMQBroker
 from fast_potato.brokers.redis import RedisBroker
@@ -17,6 +19,14 @@ elif Path("/shared").is_dir():
     DATA_DIR = Path("/shared")
 else:
     DATA_DIR = Path(__file__).parent / "testdir4data_dump"
+
+
+# --- 0. Task Input Model (the only data sent over the broker) ---
+
+
+class WriteRequest(BaseModel):
+    payload: str
+    output_filename: str
 
 
 # --- 1. Potato App-Level Singleton ---
@@ -95,8 +105,7 @@ app_redis = FastPotato(
 
 @app_redis.task(queue="deploy_redis")
 async def process_and_write_redis(
-    payload: str,
-    output_filename: str,
+    request: WriteRequest,
     # 1. Potato singleton
     config: Annotated[DeploymentConfig, Depends],
     # 2. One-layer sync function
@@ -114,18 +123,20 @@ async def process_and_write_redis(
     # 8. Default-value parameter dependency
     direct_dep: str = Depends(get_sync_salt),
 ) -> None:
-    content = ":".join([
-        config.prefix,
-        sync_salt,
-        async_tok,
-        sync_gen,
-        async_gen,
-        metrics.metric_name,
-        sec.summary(),
-        direct_dep,
-        payload,
-    ])
-    out_p = Path(output_filename)
+    content = ":".join(
+        [
+            config.prefix,
+            sync_salt,
+            async_tok,
+            sync_gen,
+            async_gen,
+            metrics.metric_name,
+            sec.summary(),
+            direct_dep,
+            request.payload,
+        ]
+    )
+    out_p = Path(request.output_filename)
     if out_p.is_absolute() and out_p.parent.exists():
         path = out_p
     else:
@@ -143,8 +154,7 @@ app_rmq = FastPotato("deploy_app_rmq", broker=broker_rmq, potato=DeploymentConfi
 
 @app_rmq.task(queue="deploy_rmq")
 async def process_and_write_rmq(
-    payload: str,
-    output_filename: str,
+    request: WriteRequest,
     # 1. Potato singleton
     config: Annotated[DeploymentConfig, Depends],
     # 2. One-layer sync function
@@ -162,18 +172,20 @@ async def process_and_write_rmq(
     # 8. Default-value parameter dependency
     direct_dep: str = Depends(get_sync_salt),
 ) -> None:
-    content = ":".join([
-        config.prefix,
-        sync_salt,
-        async_tok,
-        sync_gen,
-        async_gen,
-        metrics.metric_name,
-        sec.summary(),
-        direct_dep,
-        payload,
-    ])
-    out_p = Path(output_filename)
+    content = ":".join(
+        [
+            config.prefix,
+            sync_salt,
+            async_tok,
+            sync_gen,
+            async_gen,
+            metrics.metric_name,
+            sec.summary(),
+            direct_dep,
+            request.payload,
+        ]
+    )
+    out_p = Path(request.output_filename)
     if out_p.is_absolute() and out_p.parent.exists():
         path = out_p
     else:

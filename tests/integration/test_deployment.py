@@ -41,7 +41,7 @@ async def test_live_worker_deployment_redis(shared_dir: Path) -> None:
 
     try:
         await demo_app.process_and_write_redis.send(
-            payload=random_str, output_filename=filename
+            demo_app.WriteRequest(payload=random_str, output_filename=filename)
         )
 
         deadline = time.time() + 15.0
@@ -89,7 +89,7 @@ async def test_live_worker_deployment_rabbitmq(shared_dir: Path) -> None:
 
     try:
         await demo_app.process_and_write_rmq.send(
-            payload=random_str, output_filename=filename
+            demo_app.WriteRequest(payload=random_str, output_filename=filename)
         )
 
         deadline = time.time() + 15.0

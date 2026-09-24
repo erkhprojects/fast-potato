@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import BaseModel
 
 from fast_potato import FastPotato, TaskMessage
 from fast_potato.brokers import AbstractBroker, MemoryBroker
+
+
+class XInput(BaseModel):
+    x: int
+
+
+class OrderInput(BaseModel):
+    order_id: int
+
 
 # --- AbstractBroker contract ---
 
@@ -55,20 +65,20 @@ class TestBrokerPublish:
         app = FastPotato("test", broker=broker)
 
         @app.task
-        async def my_task(x: int) -> None: ...
+        async def my_task(data: XInput) -> None: ...
 
-        await my_task.send(42)
+        await my_task.send(XInput(x=42))
         assert len(broker.published) == 1
-        assert broker.published[0].args == [42]
+        assert broker.published[0].payload == {"x": 42}
 
     async def test_published_message_has_correct_queue(self):
         broker = MemoryBroker()
         app = FastPotato("test", broker=broker)
 
         @app.task(queue="payments")
-        async def pay(order_id: int) -> None: ...
+        async def pay(data: OrderInput) -> None: ...
 
-        await pay.send(order_id=99)
+        await pay.send(OrderInput(order_id=99))
         assert broker.published[0].queue == "payments"
 
     async def test_published_message_has_correct_task_name(self):
@@ -76,9 +86,9 @@ class TestBrokerPublish:
         app = FastPotato("test", broker=broker)
 
         @app.task
-        async def process(x: int) -> None: ...
+        async def process(data: XInput) -> None: ...
 
-        await process.send(1)
+        await process.send(XInput(x=1))
         assert broker.published[0].task_name.startswith("test.")
         assert broker.published[0].task_name.endswith(".process")
 
@@ -132,13 +142,13 @@ class TestBrokerStrategy:
         app_b = FastPotato("app", broker=broker_b)
 
         @app_a.task
-        async def task_fn(x: int) -> None: ...
+        async def task_fn(data: XInput) -> None: ...
 
         @app_b.task
-        async def task_fn_b(x: int) -> None: ...
+        async def task_fn_b(data: XInput) -> None: ...
 
-        await task_fn.send(1)
-        await task_fn_b.send(2)
+        await task_fn.send(XInput(x=1))
+        await task_fn_b.send(XInput(x=2))
 
-        assert broker_a.published[0].args == [1]
-        assert broker_b.published[0].args == [2]
+        assert broker_a.published[0].payload == {"x": 1}
+        assert broker_b.published[0].payload == {"x": 2}

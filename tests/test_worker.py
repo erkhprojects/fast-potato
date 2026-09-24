@@ -21,6 +21,27 @@ class User(BaseModel):
     address: Address | None = None
 
 
+class UserList(BaseModel):
+    users: list[User]
+
+
+class MaybeUser(BaseModel):
+    user: User | None = None
+
+
+class AddInput(BaseModel):
+    x: int
+    y: int
+
+
+class Value(BaseModel):
+    val: int
+
+
+class Text(BaseModel):
+    text: str
+
+
 class AppConfig(Potato):
     env: str = "test"
 
@@ -38,10 +59,10 @@ class TestWorkerBasicExecution:
         app, broker = make_app()
 
         @app.task
-        async def add(x: int, y: int) -> int:
-            return x + y
+        async def add(data: AddInput) -> int:
+            return data.x + data.y
 
-        msg = await add.send(10, 20)
+        msg = await add.send(AddInput(x=10, y=20))
         worker = Worker(app=app)
         result = await worker.execute(msg)
         assert result == 30
@@ -51,12 +72,12 @@ class TestWorkerBasicExecution:
         results = []
 
         @app.task
-        async def record(val: int) -> None:
-            results.append(val)
+        async def record(data: Value) -> None:
+            results.append(data.val)
 
-        await record.send(1)
-        await record.send(2)
-        await record.send(3)
+        await record.send(Value(val=1))
+        await record.send(Value(val=2))
+        await record.send(Value(val=3))
 
         assert len(broker.published) == 3
         worker = Worker(app=app)
@@ -105,14 +126,14 @@ class TestWorkerPydanticDeserialization:
         app, broker = make_app()
 
         @app.task
-        async def count_users(users: list[User]) -> int:
-            for u in users:
+        async def count_users(data: UserList) -> int:
+            for u in data.users:
                 assert isinstance(u, User)
-            return len(users)
+            return len(data.users)
 
         u1 = User(name="User1", age=20)
         u2 = User(name="User2", age=22)
-        msg = await count_users.send([u1, u2])
+        msg = await count_users.send(UserList(users=[u1, u2]))
 
         worker = Worker(app=app)
         result = await worker.execute(msg)
@@ -122,15 +143,17 @@ class TestWorkerPydanticDeserialization:
         app, broker = make_app()
 
         @app.task
-        async def check_user(user: User | None) -> str:
-            if user is None:
+        async def check_user(data: MaybeUser) -> str:
+            if data.user is None:
                 return "empty"
-            assert isinstance(user, User)
-            return user.name
+            assert isinstance(data.user, User)
+            return data.user.name
 
-        msg1 = await check_user.send(User(name="Charlie", age=35))
+        msg1 = await check_user.send(MaybeUser(user=User(name="Charlie", age=35)))
+        msg2 = await check_user.send(MaybeUser())
         worker = Worker(app=app)
         assert await worker.execute(msg1) == "Charlie"
+        assert await worker.execute(msg2) == "empty"
 
 
 async def get_suffix() -> str:
@@ -149,13 +172,13 @@ class TestWorkerDependencyInjection:
 
         @app.task
         async def compute(
-            x: int,
+            data: Value,
             sync_val: int = Depends(get_sync_val),
             async_val: int = Depends(get_async_val),
         ) -> int:
-            return x + sync_val + async_val
+            return data.val + sync_val + async_val
 
-        msg = await compute.send(5)
+        msg = await compute.send(Value(val=5))
         worker = Worker(app=app)
         result = await worker.execute(msg)
         assert result == 305
@@ -197,10 +220,10 @@ class TestWorkerDependencyInjection:
         app, broker = make_app()
 
         @app.task
-        async def shout(text: str, s: Annotated[str, Depends(get_suffix)]) -> str:
-            return f"{text}{s}"
+        async def shout(data: Text, s: Annotated[str, Depends(get_suffix)]) -> str:
+            return f"{data.text}{s}"
 
-        msg = await shout.send("hello")
+        msg = await shout.send(Text(text="hello"))
         worker = Worker(app=app)
         assert await worker.execute(msg) == "hello!!!"
 
@@ -247,15 +270,15 @@ class TestWorkerQueues:
         handled = []
 
         @app.task(queue="orders")
-        async def order_task(i: int) -> None:
-            handled.append(("orders", i))
+        async def order_task(data: Value) -> None:
+            handled.append(("orders", data.val))
 
         @app.task(queue="emails")
-        async def email_task(i: int) -> None:
-            handled.append(("emails", i))
+        async def email_task(data: Value) -> None:
+            handled.append(("emails", data.val))
 
-        await order_task.send(1)
-        await email_task.send(2)
+        await order_task.send(Value(val=1))
+        await email_task.send(Value(val=2))
 
         # Worker only listens to orders
         worker = Worker(app=app, queues=["orders"])
@@ -305,8 +328,8 @@ class TestWorkerDynamicExecution:
         processed = []
 
         @app.task
-        async def work(val: int) -> None:
-            processed.append(val)
+        async def work(data: Value) -> None:
+            processed.append(data.val)
 
         worker = Worker(app=app, concurrency=2)
         worker_task = asyncio.create_task(worker.run())
@@ -317,8 +340,8 @@ class TestWorkerDynamicExecution:
             assert worker.running
 
             # Dynamically publish tasks while worker is actively running
-            await work.send(10)
-            await work.send(20)
+            await work.send(Value(val=10))
+            await work.send(Value(val=20))
 
             # Wait briefly for worker to consume and process
             await asyncio.sleep(0.05)

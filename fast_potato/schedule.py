@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from croniter import croniter
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, InstanceOf, SerializeAsAny, field_validator
 
 
 class Schedule(BaseModel):
@@ -18,7 +16,7 @@ class Schedule(BaseModel):
             schedules=[
                 Schedule(task="my_app.process_reports", cron="0 * * * *"),
                 Schedule(task="my_app.send_digest",     cron="0 9 * * 1",
-                         queue="emails", kwargs={"full": True}),
+                         queue="emails", payload=DigestInput(full=True)),
             ],
         )
 
@@ -28,15 +26,17 @@ class Schedule(BaseModel):
         cron:   Standard 5-field cron expression (minute hour day month weekday).
         queue:  Queue to push the task onto. Defaults to the task's own queue
                 when None — resolved at beat time.
-        args:   Positional arguments forwarded to the task on every trigger.
-        kwargs: Keyword arguments forwarded to the task on every trigger.
+        payload: Input model instance sent on every trigger, for tasks that
+                take an input model. Leave None for tasks without input.
     """
 
     task: str
     cron: str
     queue: str | None = None
-    args: list[Any] = Field(default_factory=list)
-    kwargs: dict[str, Any] = Field(default_factory=dict)
+    # InstanceOf: the payload's concrete model can't be inferred from raw data, so
+    # only real instances are accepted. SerializeAsAny: dump the concrete model's
+    # fields rather than the (empty) BaseModel schema.
+    payload: SerializeAsAny[InstanceOf[BaseModel]] | None = None
 
     @field_validator("cron")
     @classmethod
