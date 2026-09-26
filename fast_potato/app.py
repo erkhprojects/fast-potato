@@ -58,16 +58,21 @@ class TaskDecorator:
     # input. This overload must precede the BaseModel one (Potato is a BaseModel).
     @overload
     def __call__[P: Potato, R](
-        self, fn: _TaskFn[P, R]
+        self,
+        fn: _TaskFn[P, R],
     ) -> task_module.Task[None, R]: ...
 
     @overload
     def __call__[M: BaseModel, R](
-        self, fn: _TaskFn[M, R]
+        self,
+        fn: _TaskFn[M, R],
     ) -> task_module.Task[M, R]: ...
 
     @overload
-    def __call__[R](self, fn: _AnyTaskFn[R]) -> task_module.Task[None, R]: ...
+    def __call__[R](
+        self,
+        fn: _AnyTaskFn[R],
+    ) -> task_module.Task[None, R]: ...
 
     def __call__(self, fn: _AnyTaskFn[Any]) -> task_module.Task[Any, Any]:
         return self._app._register(fn, queue=self._queue)
@@ -132,25 +137,37 @@ class FastPotato:
 
     @overload
     def task[P: Potato, R](
-        self, fn: _TaskFn[P, R], *, queue: str = task_module.DEFAULT_QUEUE
+        self,
+        fn: _TaskFn[P, R],
+        *,
+        queue: str = task_module.DEFAULT_QUEUE,
     ) -> task_module.Task[None, R]:
         """``@app.task`` on a function whose first parameter is a Potato dependency."""
 
     @overload
     def task[M: BaseModel, R](
-        self, fn: _TaskFn[M, R], *, queue: str = task_module.DEFAULT_QUEUE
+        self,
+        fn: _TaskFn[M, R],
+        *,
+        queue: str = task_module.DEFAULT_QUEUE,
     ) -> task_module.Task[M, R]:
         """``@app.task`` on a function taking an input model: ``send(data: M)``."""
 
     @overload
     def task[R](
-        self, fn: _AnyTaskFn[R], *, queue: str = task_module.DEFAULT_QUEUE
+        self,
+        fn: _AnyTaskFn[R],
+        *,
+        queue: str = task_module.DEFAULT_QUEUE,
     ) -> task_module.Task[None, R]:
         """``@app.task`` on a function taking no input: ``send()``."""
 
     @overload
     def task(
-        self, fn: None = None, *, queue: str = task_module.DEFAULT_QUEUE
+        self,
+        fn: None = None,
+        *,
+        queue: str = task_module.DEFAULT_QUEUE,
     ) -> TaskDecorator:
         """``@app.task(queue=...)``: returns a decorator that registers the task."""
 
@@ -171,7 +188,10 @@ class FastPotato:
         return self._register(fn, queue=queue)
 
     def _register(
-        self, fn: _AnyTaskFn[Any], *, queue: str
+        self,
+        fn: _AnyTaskFn[Any],
+        *,
+        queue: str,
     ) -> task_module.Task[Any, Any]:
         task_name = f"{self.name}.{fn.__qualname__}"
         t: task_module.Task[Any, Any] = task_module.Task(

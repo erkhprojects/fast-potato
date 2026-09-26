@@ -28,7 +28,9 @@ class RedisBroker(base.AbstractBroker):
     """
 
     def __init__(
-        self, url: str = "redis://localhost:6379/0", poll_interval: float = 1.0
+        self,
+        url: str = "redis://localhost:6379/0",
+        poll_interval: float = 1.0,
     ) -> None:
         self._url = url
         self._poll_interval = poll_interval
@@ -87,7 +89,8 @@ class RedisBroker(base.AbstractBroker):
             yield msg
 
     async def _consume_loop(
-        self, queues: list[str]
+        self,
+        queues: list[str],
     ) -> AsyncGenerator[message.TaskMessage]:
         while True:
             await self._promote_delayed(queues)

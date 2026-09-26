@@ -64,7 +64,8 @@ class EagerBroker(memory.MemoryBroker):
     """
 
     def __init__(
-        self, run: Callable[[message.TaskMessage], Awaitable[TaskRun]]
+        self,
+        run: Callable[[message.TaskMessage], Awaitable[TaskRun]],
     ) -> None:
         super().__init__()
         self._run = run
@@ -123,7 +124,9 @@ class TestApp:
     # ------------------------------------------------------------------ setup
 
     def override(
-        self, dependency: Callable[..., Any], replacement: Callable[..., Any]
+        self,
+        dependency: Callable[..., Any],
+        replacement: Callable[..., Any],
     ) -> None:
         """Resolve ``Depends(dependency)`` with ``replacement`` until exit."""
         self.app.dependency_overrides[dependency] = replacement
@@ -146,7 +149,8 @@ class TestApp:
         return [r for r in self.runs if r.error is not None]
 
     def sent[InputT: BaseModel | None](
-        self, task: task_module.Task[InputT, Any]
+        self,
+        task: task_module.Task[InputT, Any],
     ) -> list[InputT]:
         """Decoded input of every message sent for ``task``, in send order."""
         return [
@@ -160,11 +164,15 @@ class TestApp:
 
     @overload
     def assert_sent[M: BaseModel](
-        self, task: task_module.Task[M, Any], data: M
+        self,
+        task: task_module.Task[M, Any],
+        data: M,
     ) -> None: ...
 
     def assert_sent(
-        self, task: task_module.Task[Any, Any], data: BaseModel | None = None
+        self,
+        task: task_module.Task[Any, Any],
+        data: BaseModel | None = None,
     ) -> None:
         """Assert ``task`` was sent at least once (with exactly this input, if any)."""
         calls = self.sent(task)
@@ -218,11 +226,15 @@ class TestApp:
 
     @overload
     async def call[M: BaseModel, R](
-        self, task: task_module.Task[M, R], data: M
+        self,
+        task: task_module.Task[M, R],
+        data: M,
     ) -> R: ...
 
     async def call(
-        self, task: task_module.Task[Any, Any], data: BaseModel | None = None
+        self,
+        task: task_module.Task[Any, Any],
+        data: BaseModel | None = None,
     ) -> Any:
         """
         Run ``task`` now, with the same input you would pass to send().
@@ -235,7 +247,9 @@ class TestApp:
         return await worker.execute(self.app, msg)
 
     def _next_ready(
-        self, queues: list[str] | None, run_delayed: bool
+        self,
+        queues: list[str] | None,
+        run_delayed: bool,
     ) -> message.TaskMessage | None:
         now = datetime.now(tz=UTC)
         for i, msg in enumerate(self.broker.published):

@@ -19,7 +19,8 @@ logger = logging.getLogger("fast_potato.worker")
 
 
 def decode_input[InputT: BaseModel | None](
-    task: task_module.Task[InputT, Any], msg: message.TaskMessage
+    task: task_module.Task[InputT, Any],
+    msg: message.TaskMessage,
 ) -> InputT:
     """Validate a message's payload into the task's input model (None if it takes none)."""
     if task.input_model is None:

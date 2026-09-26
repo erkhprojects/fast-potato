@@ -34,7 +34,8 @@ def _type_hints(fn: Callable[..., Any], task_name: str) -> dict[str, Any]:
 
 
 def _inspect_task_signature(
-    fn: Callable[..., Any], task_name: str
+    fn: Callable[..., Any],
+    task_name: str,
 ) -> tuple[type[BaseModel] | None, set[str]]:
     """
     Validate a task function's signature and return (input_model, dependency_params).
