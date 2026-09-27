@@ -1,4 +1,9 @@
-# fast-potato
+---
+title: fast-potato
+---
+
+![fast-potato](../assets/logo.svg#only-light){ width="420" }
+![fast-potato](../assets/logo-dark.svg#only-dark){ width="420" }
 
 Eine async-first verteilte Task-Queue für Python, gebaut auf `asyncio` und Pydantic.
 

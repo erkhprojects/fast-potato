@@ -7,7 +7,10 @@ import pytest
 
 DOCS = Path(__file__).parent.parent / "docs"
 SOURCE = DOCS / "en"
-TRANSLATIONS = sorted(p for p in DOCS.iterdir() if p.is_dir() and p != SOURCE)
+# Language folders are the ones holding pages; docs/assets etc. are skipped.
+TRANSLATIONS = sorted(
+    p for p in DOCS.iterdir() if p.is_dir() and p != SOURCE and any(p.glob("*.md"))
+)
 PAGES = sorted(p.name for p in SOURCE.glob("*.md"))
 
 _FENCED_BLOCK = re.compile(r"^```.*?^```", re.S | re.M)

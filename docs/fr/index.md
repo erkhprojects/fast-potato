@@ -1,4 +1,9 @@
-# fast-potato
+---
+title: fast-potato
+---
+
+![fast-potato](../assets/logo.svg#only-light){ width="420" }
+![fast-potato](../assets/logo-dark.svg#only-dark){ width="420" }
 
 Une file d'attente de tâches distribuée pour Python, pensée d'abord pour l'asynchrone, construite sur `asyncio` et Pydantic.
 

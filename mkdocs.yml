@@ -3,6 +3,8 @@ site_description: Async-first, type-safe distributed task queue for Python.
 
 theme:
   name: material
+  logo: assets/icon.svg
+  favicon: assets/icon.svg
   features:
     - content.code.copy
     - navigation.footer
@@ -81,6 +83,7 @@ plugins:
 
 markdown_extensions:
   - admonition
+  - attr_list
   - pymdownx.details
   - pymdownx.highlight
   - pymdownx.superfences

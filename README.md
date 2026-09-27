@@ -1,4 +1,9 @@
-# fast-potato
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img src="docs/assets/logo.svg" alt="fast-potato" width="420">
+  </picture>
+</p>
 
 An async-first distributed task queue for Python, built on `asyncio` and Pydantic.
 Think Celery, but with async tasks, FastAPI-style dependency injection, and

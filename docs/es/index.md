@@ -1,4 +1,9 @@
-# fast-potato
+---
+title: fast-potato
+---
+
+![fast-potato](../assets/logo.svg#only-light){ width="420" }
+![fast-potato](../assets/logo-dark.svg#only-dark){ width="420" }
 
 Una cola de tareas distribuida para Python, async desde el diseño, construida sobre `asyncio` y Pydantic.
 

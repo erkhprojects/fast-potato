@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 372 80" role="img" aria-label="fast-potato">
+  <g transform="translate(4 4) scale(1.125)">
+  <!-- speed lines -->
+  <g stroke="#E8833A" stroke-width="3.5" stroke-linecap="round">
+    <line x1="4" y1="25" x2="14" y2="25"/>
+    <line x1="3" y1="33" x2="11" y2="33"/>
+    <line x1="5" y1="41" x2="13" y2="41"/>
+  </g>
+  <g transform="rotate(-14 39 33)">
+    <!-- potato -->
+    <path d="M17 35 C15 24 25 17 36 17 C42 17 45 15 51 16 C58 18 62 24 61 31 C60 40 55 48 43 50 C37 51 33 49 27 50 C20 50 18 43 17 35 Z"
+          fill="#D9A15B" stroke="#8A5A2B" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- highlight -->
+    <path d="M26 23 C31 20 38 21 43 20" fill="none" stroke="#F2CE91" stroke-width="3" stroke-linecap="round"/>
+    <!-- eyes -->
+    <g fill="#8A5A2B" opacity="0.75">
+      <ellipse cx="47" cy="29" rx="2.2" ry="1.5"/>
+      <ellipse cx="31" cy="38" rx="2" ry="1.4"/>
+      <ellipse cx="52" cy="41" rx="1.7" ry="1.2"/>
+      <ellipse cx="40" cy="44" rx="1.4" ry="1"/>
+    </g>
+  </g>
+  </g>
+  <text x="88" y="55" font-family="Inter, 'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="44" font-weight="700" textLength="276" lengthAdjust="spacingAndGlyphs"><tspan fill="#F3F3F3">fast</tspan><tspan fill="#E2AE68">-potato</tspan></text>
+</svg>
