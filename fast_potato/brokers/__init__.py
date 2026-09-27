@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fast_potato.brokers.base import AbstractBroker
+from fast_potato.brokers.base import AbstractBroker, BrokerConnectionError
 from fast_potato.brokers.memory import MemoryBroker
 
-__all__ = ["AbstractBroker", "MemoryBroker"]
+__all__ = ["AbstractBroker", "BrokerConnectionError", "MemoryBroker"]
 
 try:
     from fast_potato.brokers.redis import RedisBroker  # noqa: F401

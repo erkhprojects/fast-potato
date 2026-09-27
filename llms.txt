@@ -64,6 +64,8 @@ app = FastPotato("app_name", broker=RedisBroker("redis://localhost:6379/0"))
 app = FastPotato("app_name", broker=RabbitMQBroker("amqp://guest:guest@localhost:5672/"))
 ```
 
+Brokers connect lazily: `send()` calls `broker.ensure_connected()`, so producers need no setup. An unreachable broker raises `fast_potato.brokers.BrokerConnectionError` after `connect_timeout` seconds (constructor arg, default 5) instead of hanging; URL passwords are redacted in the message. `async with app.broker:` (or `await broker.connect()`) is optional, for failing at startup and closing cleanly. Workers and the scheduler connect at startup and exit with `BrokerConnectionError` if unreachable. Custom brokers subclass `AbstractBroker` and implement `is_connected`, `connect`, `disconnect`, `publish`, `consume`.
+
 `FastPotato(name, broker, potato=None, schedules=None, task_modules=None)`. Tasks are registered as `"<app_name>.<function_qualname>"` (e.g. `"my_app.send_welcome_email"`).
 
 ### 2. Registering Tasks

@@ -25,6 +25,10 @@ class MemoryBroker(base.AbstractBroker):
         self.connected: bool = False
         self._notify_event: asyncio.Event = asyncio.Event()
 
+    @property
+    def is_connected(self) -> bool:
+        return self.connected
+
     async def connect(self) -> None:
         self.connected = True
 

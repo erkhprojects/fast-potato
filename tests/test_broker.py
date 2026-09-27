@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from pydantic import BaseModel
 
 from fast_potato import FastPotato, TaskMessage
-from fast_potato.brokers import AbstractBroker, MemoryBroker
+from fast_potato.brokers import AbstractBroker, BrokerConnectionError, MemoryBroker
 
 
 class XInput(BaseModel):
@@ -116,6 +118,10 @@ class TestBrokerStrategy:
         class BrokerA(AbstractBroker):
             published: list[TaskMessage] = []
 
+            @property
+            def is_connected(self):
+                return True
+
             async def connect(self): ...
             async def disconnect(self): ...
             async def publish(self, msg):
@@ -127,6 +133,10 @@ class TestBrokerStrategy:
 
         class BrokerB(AbstractBroker):
             published: list[TaskMessage] = []
+
+            @property
+            def is_connected(self):
+                return True
 
             async def connect(self): ...
             async def disconnect(self): ...
@@ -152,3 +162,107 @@ class TestBrokerStrategy:
 
         assert broker_a.published[0].payload == {"x": 1}
         assert broker_b.published[0].payload == {"x": 2}
+
+
+# --- Lazy connect & fail-fast ---
+
+
+class CountingBroker(MemoryBroker):
+    def __init__(self) -> None:
+        super().__init__()
+        self.connect_calls = 0
+
+    async def connect(self) -> None:
+        self.connect_calls += 1
+        await asyncio.sleep(0.01)  # give concurrent senders a chance to race
+        await super().connect()
+
+
+class TestLazyConnect:
+    async def test_send_connects_on_first_use(self):
+        broker = CountingBroker()
+        app = FastPotato("lazy", broker=broker)
+
+        @app.task
+        async def ping() -> None: ...
+
+        assert not broker.is_connected
+        await ping.send()
+        assert broker.is_connected
+        assert broker.connect_calls == 1
+
+    async def test_concurrent_first_sends_share_one_connect(self):
+        broker = CountingBroker()
+        app = FastPotato("lazy", broker=broker)
+
+        @app.task
+        async def ping() -> None: ...
+
+        await asyncio.gather(*(ping.send() for _ in range(10)))
+        assert broker.connect_calls == 1
+        assert len(broker.history) == 10
+
+    async def test_already_connected_broker_is_not_reconnected(self):
+        broker = CountingBroker()
+        await broker.connect()
+        app = FastPotato("lazy", broker=broker)
+
+        @app.task
+        async def ping() -> None: ...
+
+        await ping.send()
+        assert broker.connect_calls == 1
+
+
+class TestFailFast:
+    @pytest.mark.parametrize(
+        "make_broker",
+        [
+            pytest.param(
+                lambda: pytest.importorskip("fast_potato.brokers.redis").RedisBroker(
+                    "redis://127.0.0.1:1/0", connect_timeout=2
+                ),
+                id="redis",
+            ),
+            pytest.param(
+                lambda: pytest.importorskip(
+                    "fast_potato.brokers.rabbitmq"
+                ).RabbitMQBroker("amqp://guest:secret@127.0.0.1:1/", connect_timeout=2),
+                id="rabbitmq",
+            ),
+        ],
+    )
+    async def test_unreachable_broker_raises_on_send(self, make_broker):
+        app = FastPotato("unreachable", broker=make_broker())
+
+        @app.task
+        async def ping() -> None: ...
+
+        with pytest.raises(BrokerConnectionError) as exc_info:
+            await ping.send()
+        assert "secret" not in str(exc_info.value)
+        assert not app.broker.is_connected
+
+    @pytest.mark.parametrize(
+        ("url", "shown"),
+        [
+            ("amqp://guest:secret@host:5672/", "amqp://guest:***@host:5672/"),
+            ("redis://:secret@host:6379/0", "redis://:***@host:6379/0"),
+            ("redis://localhost:6379/0", "redis://localhost:6379/0"),
+        ],
+    )
+    def test_password_is_redacted(self, url, shown):
+        err = BrokerConnectionError.from_exception(
+            "X", url, 1.0, OSError(f"failed for {url}")
+        )
+        assert "secret" not in str(err)
+        assert str(err).count(shown) == 2  # in the URL and in the echoed reason
+
+    def test_error_message_names_broker_and_reason(self):
+        err = BrokerConnectionError.from_exception(
+            "Redis", "redis://:pw@h:1/0", 5.0, TimeoutError()
+        )
+        assert str(err) == (
+            "Could not connect to Redis at redis://:***@h:1/0 (timeout 5.0s): TimeoutError"
+        )
+        assert isinstance(err, ConnectionError)

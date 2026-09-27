@@ -1,0 +1,89 @@
+site_name: fast-potato
+site_description: Async-first, type-safe distributed task queue for Python.
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.footer
+    - navigation.sections
+    - search.suggest
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Tasks & type safety: tasks.md
+  - Dependency injection: dependencies.md
+  - Testing: testing.md
+  - Workers & CLI: workers.md
+  - Scheduling: scheduling.md
+  - Brokers: brokers.md
+
+plugins:
+  - search
+  # One folder per language (docs/en, docs/de, ...) with identical file names.
+  # Pages missing in a language fall back to English.
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: de
+          name: Deutsch
+          build: true
+          nav_translations:
+            Home: Startseite
+            Getting started: Erste Schritte
+            Tasks & type safety: Tasks & Typsicherheit
+            Dependency injection: Dependency Injection
+            Testing: Testen
+            Workers & CLI: Worker & CLI
+            Scheduling: Zeitplanung
+            Brokers: Broker
+        - locale: es
+          name: Español
+          build: true
+          nav_translations:
+            Home: Inicio
+            Getting started: Primeros pasos
+            Tasks & type safety: Tareas y seguridad de tipos
+            Dependency injection: Inyección de dependencias
+            Testing: Pruebas
+            Workers & CLI: Workers y CLI
+            Scheduling: Programación de tareas
+            Brokers: Brokers
+        - locale: fr
+          name: Français
+          build: true
+          nav_translations:
+            Home: Accueil
+            Getting started: Premiers pas
+            Tasks & type safety: Tâches et typage sûr
+            Dependency injection: Injection de dépendances
+            Testing: Tests
+            Workers & CLI: Workers et CLI
+            Scheduling: Planification
+            Brokers: Brokers
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.inlinehilite
+  - toc:
+      permalink: true

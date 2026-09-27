@@ -176,6 +176,8 @@ class Task[InputT: BaseModel | None, R]:
     ) -> message.TaskMessage:
         """Publish the task. Pass the input model instance unless the task takes none."""
         msg = self.build_message(data, delay=delay, eta=eta, queue=queue)
+        # Lazy connect: producers don't need to connect the broker themselves.
+        await self.broker.ensure_connected()
         await self.broker.publish(msg)
         return msg
 

@@ -11,6 +11,8 @@ try:
         AbstractConnection,
         AbstractQueue,
     )
+    from aio_pika.connection import make_url
+    from aiormq.exceptions import AMQPError
 except ImportError as exc:
     raise ImportError(
         "RabbitMQBroker requires the 'rabbitmq' extra: pip install fast-potato[rabbitmq]"
@@ -29,17 +31,44 @@ class RabbitMQBroker(base.AbstractBroker):
 
     Args:
         url: AMQP connection URL, e.g. "amqp://guest:guest@localhost:5672/"
+        connect_timeout: seconds to wait for RabbitMQ before raising
+            BrokerConnectionError (default 5)
     """
 
-    def __init__(self, url: str = "amqp://guest:guest@localhost:5672/") -> None:
+    def __init__(
+        self,
+        url: str = "amqp://guest:guest@localhost:5672/",
+        connect_timeout: float = base.DEFAULT_CONNECT_TIMEOUT,
+    ) -> None:
         self._url = url
+        self.connect_timeout = connect_timeout
         self._connection: AbstractConnection | None = None
         self._channel: AbstractChannel | None = None
 
+    @property
+    def is_connected(self) -> bool:
+        return self._channel is not None and not self._channel.is_closed
+
     async def connect(self) -> None:
         """Establish a robust AMQP connection and channel."""
-        self._connection = await aio_pika.connect_robust(self._url)
-        self._channel = await self._connection.channel()
+        # Build the robust connection ourselves (instead of connect_robust) so we
+        # always hold a reference: a failed or timed-out first attempt must be
+        # closed, or aio-pika keeps retrying in the background forever.
+        connection = aio_pika.RobustConnection(make_url(self._url))
+        try:
+            async with asyncio.timeout(self.connect_timeout):
+                await connection.connect(timeout=self.connect_timeout)
+                channel = await connection.channel()
+        except (AMQPError, OSError, TimeoutError) as exc:
+            await connection.close()
+            raise base.BrokerConnectionError.from_exception(
+                "RabbitMQ",
+                self._url,
+                self.connect_timeout,
+                exc,
+            ) from exc
+        self._connection = connection
+        self._channel = channel
 
     async def disconnect(self) -> None:
         """Cleanly close channel and connection."""
@@ -53,7 +82,7 @@ class RabbitMQBroker(base.AbstractBroker):
     def _get_channel(self) -> AbstractChannel:
         if self._channel is None or self._channel.is_closed:
             raise RuntimeError(
-                "Broker is not connected. Use 'async with broker:' or call connect()."
+                "Broker is not connected. Call connect() or ensure_connected() first."
             )
         return self._channel
 
