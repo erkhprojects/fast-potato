@@ -15,10 +15,23 @@ jobs:
         with:
           python-version: "3.14"
           enable-cache: true
-      - run: uv sync --frozen --group dev --group docs
+      # --all-extras: broker tests import redis and aio-pika
+      - run: uv sync --frozen --all-extras --group dev --group docs
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest tests/test_*.py
       # Same build Read the Docs runs; fails on broken links/nav before merge.
       - run: uv run mkdocs build --strict
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --frozen --group dev
+      # Builds the compose stack (redis, rabbitmq, workers) and runs tests/integration in it.
+      - run: uv run poe test-integration
