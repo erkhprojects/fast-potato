@@ -3,9 +3,11 @@
 ```python
 from fast_potato.brokers import MemoryBroker, RabbitMQBroker, RedisBroker
 
-RedisBroker("redis://localhost:6379/0")               # pip install "fast-potato[redis]"
-RabbitMQBroker("amqp://guest:guest@localhost:5672/")  # pip install "fast-potato[rabbitmq]"
-MemoryBroker()                                        # in-process, no dependencies
+RedisBroker("redis://localhost:6379/0")  # pip install "fast-potato[redis]"
+RabbitMQBroker(
+    "amqp://guest:guest@localhost:5672/"
+)  # pip install "fast-potato[rabbitmq]"
+MemoryBroker()  # in-process, no dependencies
 ```
 
 | Broker | Délais (`delay` / `eta`) | Utilisation |
@@ -29,7 +31,9 @@ broker = RedisBroker("redis://localhost:6379/0", connect_timeout=2)
 try:
     await send_receipt.send(order)
 except BrokerConnectionError as exc:
-    print(exc)  # Could not connect to Redis at redis://localhost:6379/0 (timeout 2s): ...
+    print(
+        exc
+    )  # Could not connect to Redis at redis://localhost:6379/0 (timeout 2s): ...
 ```
 
 Les mots de passe présents dans l'URL sont masqués dans le message.
@@ -62,8 +66,9 @@ class MyBroker(AbstractBroker):
     async def connect(self) -> None: ...  # raise BrokerConnectionError, don't hang
     async def disconnect(self) -> None: ...
 
-    async def publish(self, msg: TaskMessage) -> None:
-        ...  # store msg.model_dump_json() on msg.queue; honor msg.eta
+    async def publish(
+        self, msg: TaskMessage
+    ) -> None: ...  # store msg.model_dump_json() on msg.queue; honor msg.eta
 
     async def consume(self, queues: list[str]) -> AsyncGenerator[TaskMessage]:
         while True:

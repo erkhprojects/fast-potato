@@ -24,8 +24,8 @@ async def test_checkout() -> None:
 ```
 
 ```python
-await t.drain(queues=["orders"])     # only these queues
-await t.drain(run_delayed=False)     # leave delay/eta tasks in t.pending
+await t.drain(queues=["orders"])  # only these queues
+await t.drain(run_delayed=False)  # leave delay/eta tasks in t.pending
 ```
 
 ## Modo eager
@@ -34,7 +34,7 @@ Cada `send()` ejecuta la tarea antes de retornar, en cualquier parte de tu códi
 
 ```python
 with TestApp(app, eager=True) as t:
-    await checkout(order)            # the whole chain has already run
+    await checkout(order)  # the whole chain has already run
     assert t.pending == []
 ```
 

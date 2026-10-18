@@ -44,5 +44,5 @@ Prozess zwangsweise beendet.
 from fast_potato import Worker
 
 worker = Worker(app, queues=["orders"], concurrency=5)
-await worker.run()   # until worker.stop() is called
+await worker.run()  # until worker.stop() is called
 ```

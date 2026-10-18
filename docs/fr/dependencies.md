@@ -36,7 +36,9 @@ class PaymentGateway:
 
 
 @app.task
-async def charge(order: Order, gateway: Annotated[PaymentGateway, Depends()]) -> None: ...
+async def charge(
+    order: Order, gateway: Annotated[PaymentGateway, Depends()]
+) -> None: ...
 ```
 
 Chaque dépendance est résolue **une fois par exécution de tâche** et partagée par tout
@@ -48,7 +50,7 @@ ce qui en a besoin pendant cette exécution.
 async def get_db() -> AsyncIterator[Session]:
     session = await Session.open()
     try:
-        yield session          # injected into the task
+        yield session  # injected into the task
     finally:
         await session.close()  # runs after the task finishes
 

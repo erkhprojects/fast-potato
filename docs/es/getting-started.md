@@ -39,7 +39,9 @@ from shop import Order, app, send_receipt
 
 async def checkout() -> None:
     msg = await send_receipt.send(Order(order_id=1, email="alice@example.com"))
-    print(msg.id, msg.payload)  # payload == {"order_id": 1, "email": "alice@example.com"}
+    print(
+        msg.id, msg.payload
+    )  # payload == {"order_id": 1, "email": "alice@example.com"}
 ```
 
 ## 3. Ejecuta un worker

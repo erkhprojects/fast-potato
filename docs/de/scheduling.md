@@ -13,10 +13,17 @@ app = FastPotato(
     broker=broker,
     schedules=[
         Schedule(task="shop.cleanup", cron="0 3 * * *"),
-        Schedule(task="shop.send_report", cron=crontab(minute="0", hour="8"),
-                 payload=ReportInput(period="daily")),
-        Schedule(task="shop.send_report", cron=crontab(minute="0", hour="8", day_of_week="1"),
-                 payload=ReportInput(period="weekly"), queue="reports"),
+        Schedule(
+            task="shop.send_report",
+            cron=crontab(minute="0", hour="8"),
+            payload=ReportInput(period="daily"),
+        ),
+        Schedule(
+            task="shop.send_report",
+            cron=crontab(minute="0", hour="8", day_of_week="1"),
+            payload=ReportInput(period="weekly"),
+            queue="reports",
+        ),
     ],
 )
 

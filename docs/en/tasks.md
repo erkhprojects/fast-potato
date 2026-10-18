@@ -34,12 +34,12 @@ await heartbeat.send()
 ```python
 from datetime import UTC, datetime
 
-await process.send(order, delay=30)                                # run in 30 seconds
-await process.send(order, eta=datetime(2030, 1, 1, tzinfo=UTC))    # run at a time
-await process.send(order, queue="priority")                        # override the queue
+await process.send(order, delay=30)  # run in 30 seconds
+await process.send(order, eta=datetime(2030, 1, 1, tzinfo=UTC))  # run at a time
+await process.send(order, queue="priority")  # override the queue
 
 
-@app.task(queue="emails")                                          # default queue for a task
+@app.task(queue="emails")  # default queue for a task
 async def send_email(order: Order) -> None: ...
 ```
 
@@ -48,13 +48,13 @@ async def send_email(order: Order) -> None: ...
 ## What mypy checks
 
 ```python
-await process.send(order)                   # ✅
-await heartbeat.send()                      # ✅
+await process.send(order)  # ✅
+await heartbeat.send()  # ✅
 
-await process.send()                        # ❌ missing input
-await process.send({"order_id": 1})         # ❌ a dict is not an Order
-await process.send(OtherModel(...))         # ❌ wrong model
-await heartbeat.send(order)                 # ❌ task takes no input
+await process.send()  # ❌ missing input
+await process.send({"order_id": 1})  # ❌ a dict is not an Order
+await process.send(OtherModel(...))  # ❌ wrong model
+await heartbeat.send(order)  # ❌ task takes no input
 ```
 
 !!! note
