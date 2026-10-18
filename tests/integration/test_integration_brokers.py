@@ -222,12 +222,10 @@ async def test_end_to_end_worker_execution(broker: AbstractBroker) -> None:
         assert results["currency"] == "USD"
         assert results["tax_rate"] == 0.08
     finally:
+        # Graceful stop, like SIGTERM in deployment: signal, then wait for run() to
+        # return on its own. The timeout turns a stuck shutdown into a failure.
         worker.stop()
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError, Exception:
-            pass
+        await asyncio.wait_for(worker_task, timeout=5.0)
 
 
 # ------------------------------------------------------------------------------
@@ -278,9 +276,7 @@ async def test_end_to_end_annotated_dependencies(broker: AbstractBroker) -> None
         assert results["session"] == "session:db_primary_active"
         assert results["tax_rate"] == 0.15
     finally:
+        # Graceful stop, like SIGTERM in deployment: signal, then wait for run() to
+        # return on its own. The timeout turns a stuck shutdown into a failure.
         worker.stop()
-        worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError, Exception:
-            pass
+        await asyncio.wait_for(worker_task, timeout=5.0)

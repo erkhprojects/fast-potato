@@ -1,8 +1,8 @@
 name: Publish to PyPI
 
 on:
-  release:
-    types: [published]
+  push:
+    tags: ["v*"]
 
 jobs:
   checks:
@@ -48,12 +48,12 @@ jobs:
     needs: pypi
     runs-on: ubuntu-latest
     permissions:
-      contents: write # attach files to the release
+      contents: write # create the release and attach files
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: dist
           path: dist/
-      - run: gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY"
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes --repo "$GITHUB_REPOSITORY"
         env:
           GH_TOKEN: ${{ github.token }}

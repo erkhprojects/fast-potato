@@ -1,5 +1,6 @@
 site_name: fast-potato
 site_description: Async-first, type-safe distributed task queue for Python.
+site_url: !ENV [READTHEDOCS_CANONICAL_URL, "https://fast-potato.readthedocs.io/en/latest/"]
 
 theme:
   name: material
