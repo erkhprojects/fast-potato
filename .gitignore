@@ -37,7 +37,6 @@ tests/conf4test/remote.yaml
 tests/conf4test/weskit.yaml
 /builds/
 *.weskit
-/.github/
 weskit.yaml
 config/config.yaml
 /config/keycloak/realm-export.json
